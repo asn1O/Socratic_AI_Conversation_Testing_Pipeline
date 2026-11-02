@@ -84,6 +84,12 @@ def main():
         help="Max retries for tutor to return valid structured JSON (default: 5).",
     )
     parser.add_argument(
+        "--max-student-retries",
+        type=int,
+        default=5,
+        help="Max retries for student model calls (default: 5).",
+    )
+    parser.add_argument(
         "--data-dir",
         type=str,
         default=str(PROJECT_ROOT / "data"),
@@ -133,6 +139,7 @@ def main():
             student_model=student,
             max_iterations=args.max_iterations,
             max_tutor_retries=args.max_tutor_retries,
+            max_student_retries=args.max_student_retries,
             data_dir=args.data_dir,
             generator_id=args.generator_id,
             require_closing=args.require_closing,

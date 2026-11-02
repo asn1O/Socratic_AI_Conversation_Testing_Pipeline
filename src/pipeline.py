@@ -57,6 +57,7 @@ def run_single_conversation(
     student_model: Model,
     max_iterations: int = 15,
     max_tutor_retries: int = 5,
+    max_student_retries: int = 5,
     problem: Optional[str] = None,
     topic: Optional[str] = None,
     domain: Optional[str] = None,
@@ -72,8 +73,8 @@ def run_single_conversation(
 
     Flow:
       For round 0 .. max_iterations-1:
-        1. Student prompt generated -> Student model called -> validate student response.
-        2. Tutor prompt generated -> Tutor model called in retry loop -> validate tutor JSON.
+        1. Student prompt generated -> Student model called (up to max_student_retries) -> validate response.
+        2. Tutor prompt generated -> Tutor model called (up to max_tutor_retries) -> validate tutor JSON.
         3. If tutor state == "Closing", break immediately.
       Save valid conversation to data/{tutor_stem}/{generator_id}-set[n].json.
     """
@@ -99,7 +100,7 @@ def run_single_conversation(
         turn_tutor = 2 * i + 2
 
         # -------------------------------------------------------------
-        # 1. Student Turn
+        # 1. Student Turn (with retry loop)
         # -------------------------------------------------------------
         student_prompt = generate_student_prompt(
             conversation_history=conversation,
@@ -110,32 +111,95 @@ def run_single_conversation(
             domain=domain_text,
         )
 
-        if mock:
-            # Mock responses for testing
-            if i == 0:
-                student_reply = "I think the ball costs 10 cents, because $1.10 minus $1.00 is $0.10."
-            elif i == 1:
-                student_reply = "Wait, if the ball is 10 cents and the bat is $1 more, the bat would be $1.10, which totals $1.20! So the ball must be 5 cents."
-            else:
-                student_reply = "In general, when one item is X more than another, you subtract the difference from the total and divide by 2."
-            student_tokens = 25
-        else:
-            success, raw_student_reply, student_tokens, err = student_model.call_model(student_prompt)
-            if not success or not raw_student_reply:
-                logger.error("Student model failed on turn %d: error=%s", turn_student, err)
-                return False, None, {"error": f"student model call failed: {err}"}
-            student_reply = raw_student_reply
+        student_turn_valid = False
+        student_reply = ""
+        last_student_err = ""
 
-        valid_student, student_text, student_err = validate_student_turn(student_reply, parameters)
-        if not valid_student:
-            logger.warning("Student turn %d failed validation: %s", turn_student, student_err)
+        for retry in range(max_student_retries):
+            logger.info(
+                "Calling Student model [%s (%s)] on turn %d (attempt %d/%d)...",
+                student_model.model_name,
+                student_model.provider,
+                turn_student,
+                retry + 1,
+                max_student_retries,
+            )
+
+            if mock:
+                # Mock responses for testing
+                if i == 0:
+                    raw_student_reply = "I think the ball costs 10 cents, because $1.10 minus $1.00 is $0.10."
+                elif i == 1:
+                    raw_student_reply = "Wait, if the ball is 10 cents and the bat is $1 more, the bat would be $1.10, which totals $1.20! So the ball must be 5 cents."
+                else:
+                    raw_student_reply = "In general, when one item is X more than another, you subtract the difference from the total and divide by 2."
+                student_tokens = 25
+                success = True
+                err = None
+            else:
+                success, raw_student_reply, student_tokens, err = student_model.call_model(student_prompt)
+
+            if not success or not raw_student_reply:
+                last_student_err = f"model call error: {err}"
+                logger.warning(
+                    "Student model [%s (%s)] call FAILED on turn %d (attempt %d/%d): error=%s",
+                    student_model.model_name,
+                    student_model.provider,
+                    turn_student,
+                    retry + 1,
+                    max_student_retries,
+                    err,
+                )
+                continue
+
+            valid_student, student_text, student_err = validate_student_turn(raw_student_reply, parameters)
+            if not valid_student:
+                last_student_err = f"validation error: {student_err}"
+                logger.warning(
+                    "Student model [%s (%s)] response REJECTED on turn %d (attempt %d/%d): %s",
+                    student_model.model_name,
+                    student_model.provider,
+                    turn_student,
+                    retry + 1,
+                    max_student_retries,
+                    student_err,
+                )
+                continue
+
+            student_turn_valid = True
+            student_reply = student_text or raw_student_reply
+            logger.info(
+                "Student model [%s (%s)] call SUCCESS on turn %d (%d tokens):\n\"%s\"",
+                student_model.model_name,
+                student_model.provider,
+                turn_student,
+                student_tokens or 0,
+                student_reply,
+            )
+            break
+
+        if not student_turn_valid or not student_reply:
+            logger.error(
+                "Student model [%s (%s)] failed after %d retries on turn %d. Stopping pipeline.",
+                student_model.model_name,
+                student_model.provider,
+                max_student_retries,
+                turn_student,
+            )
+            tutor_model.write_rejected_response(
+                conversation,
+                data_dir=data_dir,
+                generator_id=generator_id,
+                reason=f"Student failed after {max_student_retries} retries on turn {turn_student}: {last_student_err}",
+            )
+            return False, None, {"error": f"student failed after {max_student_retries} retries on turn {turn_student}: {last_student_err}"}
 
         conversation.append({
             "turn": turn_student,
             "speaker": "student",
-            "text": student_text or student_reply,
+            "text": student_reply,
         })
-        logger.info("Student turn %d recorded (%d words)", turn_student, len((student_text or "").split()))
+        logger.info("Student turn %d recorded (%d words)", turn_student, len(student_reply.split()))
 
         # -------------------------------------------------------------
         # 2. Tutor Turn (with retry loop for valid JSON structure)
@@ -145,6 +209,15 @@ def run_single_conversation(
         last_tutor_err = ""
 
         for retry in range(max_tutor_retries):
+            logger.info(
+                "Calling Tutor model [%s (%s)] on turn %d (attempt %d/%d)...",
+                tutor_model.model_name,
+                tutor_model.provider,
+                turn_tutor,
+                retry + 1,
+                max_tutor_retries,
+            )
+
             tutor_prompt = generate_tutor_prompt(
                 conversation_history=conversation,
                 parameters=parameters,
@@ -174,30 +247,60 @@ def run_single_conversation(
                         "response": "Excellent deduction! You've mastered this concept completely. Ready for the next challenge?",
                     })
                 tutor_tokens = 50
+                success = True
+                err = None
             else:
                 success, raw_tutor_reply, tutor_tokens, err = tutor_model.call_model(tutor_prompt)
-                if not success or not raw_tutor_reply:
-                    logger.warning("Tutor model call failed on retry %d: error=%s", retry + 1, err)
-                    last_tutor_err = f"model call error: {err}"
-                    continue
+
+            if not success or not raw_tutor_reply:
+                last_tutor_err = f"model call error: {err}"
+                logger.warning(
+                    "Tutor model [%s (%s)] call FAILED on turn %d (attempt %d/%d): error=%s",
+                    tutor_model.model_name,
+                    tutor_model.provider,
+                    turn_tutor,
+                    retry + 1,
+                    max_tutor_retries,
+                    err,
+                )
+                continue
 
             is_valid, parsed, val_err = validate_tutor_turn(raw_tutor_reply, parameters)
             if is_valid and parsed:
                 tutor_turn_valid = True
                 tutor_payload = parsed
+                logger.info(
+                    "Tutor model [%s (%s)] call SUCCESS on turn %d (state: %s, %d tokens):\nReasoning: %s\nResponse: \"%s\"",
+                    tutor_model.model_name,
+                    tutor_model.provider,
+                    turn_tutor,
+                    parsed["state"],
+                    tutor_tokens or 0,
+                    parsed.get("reasoning", ""),
+                    parsed.get("response", ""),
+                )
                 break
             else:
                 last_tutor_err = val_err
                 logger.warning(
-                    "Tutor turn %d retry %d/%d rejected: %s",
+                    "Tutor model [%s (%s)] response REJECTED on turn %d (attempt %d/%d): %s | Raw output: %s",
+                    tutor_model.model_name,
+                    tutor_model.provider,
                     turn_tutor,
                     retry + 1,
                     max_tutor_retries,
                     val_err,
+                    raw_tutor_reply,
                 )
 
         if not tutor_turn_valid or not tutor_payload:
-            logger.error("Tutor model failed to provide a valid turn after %d retries. Aborting conversation.", max_tutor_retries)
+            logger.error(
+                "Tutor model [%s (%s)] failed after %d retries on turn %d. Stopping pipeline.",
+                tutor_model.model_name,
+                tutor_model.provider,
+                max_tutor_retries,
+                turn_tutor,
+            )
             tutor_model.write_rejected_response(
                 conversation,
                 data_dir=data_dir,
@@ -233,6 +336,40 @@ def run_single_conversation(
             reason="Did not reach Closing state within max_iterations",
         )
         return False, None, {"error": "did not reach Closing state"}
+
+    # -----------------------------------------------------------------
+    # Log the complete conversation transcript with spacing
+    # -----------------------------------------------------------------
+    transcript_lines = [
+        "",
+        "=" * 70,
+        "COMPLETE CONVERSATION TRANSCRIPT",
+        f"  Tutor Model   : {tutor_model.provider} - {tutor_model.model_name}",
+        f"  Student Model : {student_model.provider} - {student_model.model_name}",
+        f"  Problem       : {problem_text}",
+        f"  Total Turns   : {len(conversation)} (Closed: {closed})",
+        "=" * 70,
+        "",
+    ]
+    for turn_item in conversation:
+        turn_num = turn_item.get("turn", "?")
+        spk = turn_item.get("speaker", "unknown").upper()
+        if spk == "STUDENT":
+            transcript_lines.append(f"Turn {turn_num} [STUDENT - {student_model.model_name}]:")
+            transcript_lines.append(f"  {turn_item.get('text', '')}")
+            transcript_lines.append("")
+        else:
+            state_val = turn_item.get("state", "")
+            state_label = f" ({state_val})" if state_val else ""
+            transcript_lines.append(f"Turn {turn_num} [TUTOR{state_label} - {tutor_model.model_name}]:")
+            if turn_item.get("reasoning"):
+                transcript_lines.append(f"  Reasoning: {turn_item.get('reasoning')}")
+            transcript_lines.append(f"  Response : {turn_item.get('response', turn_item.get('text', ''))}")
+            transcript_lines.append("")
+
+    transcript_lines.append("=" * 70)
+    transcript_lines.append("")
+    logger.info("\n".join(transcript_lines))
 
     # -----------------------------------------------------------------
     # Save conversation to data folder

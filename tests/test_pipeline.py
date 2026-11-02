@@ -113,3 +113,105 @@ def test_set_file_splitting(tmp_path):
 
     assert len(data0) == 15
     assert len(data1) == 1
+
+
+def test_run_single_conversation_student_retry_failure(tmp_path, monkeypatch):
+    tutor = Model(
+        provider="Google",
+        api_key="test",
+        model_name="gemini-3.5-flash",
+        url="http://localhost",
+    )
+    student = Model(
+        provider="Google",
+        api_key="test",
+        model_name="gemini-2.5-flash-lite",
+        url="http://localhost",
+    )
+
+    data_dir = tmp_path / "data"
+
+    calls = 0
+    def mock_student_call(prompt, **kwargs):
+        nonlocal calls
+        calls += 1
+        return False, None, 0, "Rate limit error"
+
+    monkeypatch.setattr(student, "call_model", mock_student_call)
+
+    success, save_path, record = run_single_conversation(
+        tutor_model=tutor,
+        student_model=student,
+        max_iterations=5,
+        max_student_retries=5,
+        data_dir=str(data_dir),
+        generator_id="test_gen",
+        mock=False,
+    )
+
+    assert success is False
+    assert save_path is None
+    assert calls == 5
+    assert "student failed after 5 retries on turn 1" in record["error"]
+
+    # Verify rejected response was written to data folder
+    stem = tutor.response_file_stem
+    rejected_file = data_dir / "rejected_responses" / f"test_gen-{stem}.txt"
+    assert rejected_file.exists()
+    content = rejected_file.read_text(encoding="utf-8")
+    assert "Student failed after 5 retries on turn 1" in content
+
+
+def test_run_single_conversation_student_retry_success(tmp_path, monkeypatch):
+    tutor = Model(
+        provider="Google",
+        api_key="test",
+        model_name="gemini-3.5-flash",
+        url="http://localhost",
+    )
+    student = Model(
+        provider="Google",
+        api_key="test",
+        model_name="gemini-2.5-flash-lite",
+        url="http://localhost",
+    )
+
+    data_dir = tmp_path / "data"
+
+    student_calls = 0
+    def mock_student_call(prompt, **kwargs):
+        nonlocal student_calls
+        student_calls += 1
+        if student_calls < 3:
+            return False, None, 0, "Temporary network timeout"
+        return True, "I think the answer is 10 cents.", 15, None
+
+    tutor_calls = 0
+    def mock_tutor_call(prompt, **kwargs):
+        nonlocal tutor_calls
+        tutor_calls += 1
+        return True, json.dumps({
+            "reasoning": "The student gave 10 cents.",
+            "state": "Closing",
+            "response": "Good job!",
+        }), 20, None
+
+    monkeypatch.setattr(student, "call_model", mock_student_call)
+    monkeypatch.setattr(tutor, "call_model", mock_tutor_call)
+
+    success, save_path, record = run_single_conversation(
+        tutor_model=tutor,
+        student_model=student,
+        max_iterations=3,
+        max_student_retries=5,
+        data_dir=str(data_dir),
+        generator_id="test_gen",
+        mock=False,
+    )
+
+    assert success is True
+    assert save_path is not None
+    assert student_calls == 3  # Failed 2 times, succeeded on 3rd
+    assert len(record["conversation"]) == 2
+
+
