@@ -33,14 +33,9 @@ def load_models_from_file(models_path: str) -> List[Model]:
 
 
 def get_model_by_index_or_name(models: List[Model], index: Optional[int] = None, name: Optional[str] = None) -> Model:
-    """Select a model by index or by matching substring in its model_name."""
+    """Select a model by matching substring in its model_name or by index."""
     if not models:
         raise ValueError("Models list is empty")
-
-    if index is not None:
-        if 0 <= index < len(models):
-            return models[index]
-        raise IndexError(f"Model index {index} out of bounds (0 to {len(models) - 1})")
 
     if name:
         target = name.strip().lower()
@@ -48,6 +43,11 @@ def get_model_by_index_or_name(models: List[Model], index: Optional[int] = None,
             if target in m.model_name.lower():
                 return m
         raise ValueError(f"No model found matching name '{name}'")
+
+    if index is not None:
+        if 0 <= index < len(models):
+            return models[index]
+        raise IndexError(f"Model index {index} out of bounds (0 to {len(models) - 1})")
 
     return models[0]
 

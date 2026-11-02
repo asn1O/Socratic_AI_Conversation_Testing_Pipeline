@@ -118,8 +118,16 @@ def main():
     tutors = load_models_from_file(args.tutors_path)
     students = load_models_from_file(args.students_path)
 
-    tutor = get_model_by_index_or_name(tutors, index=args.tutor_index, name=args.tutor_model)
-    student = get_model_by_index_or_name(students, index=args.student_index, name=args.student_model)
+    tutor = get_model_by_index_or_name(
+        tutors,
+        index=None if args.tutor_model else args.tutor_index,
+        name=args.tutor_model,
+    )
+    student = get_model_by_index_or_name(
+        students,
+        index=None if args.student_model else args.student_index,
+        name=args.student_model,
+    )
 
     print("\n" + "=" * 60)
     print("Conversation Testing Pipeline Configuration")
