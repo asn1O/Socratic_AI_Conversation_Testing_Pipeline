@@ -200,5 +200,243 @@
         "response": "You've got it! You correctly determined that the ball costs 5 cents, checked that the bat ($1.05) plus the ball equals $1.10, and explained why the 10-cent instinct leads to a $1.20 total. Great work reasoning through the problem step by step."
       }
     ]
+  },
+  {
+    "config": {
+      "tutor_model": "nvidia/nemotron-3.5-super-vl-120b-a12b",
+      "tutor_provider": "NVIDIA",
+      "student_model": "nvidia/nemotron-3.5-super-vl-120b-a12b",
+      "student_provider": "NVIDIA",
+      "max_iterations": 15,
+      "completed_rounds": 9,
+      "closed": true,
+      "parameters": {}
+    },
+    "domain": "Quantitative reasoning",
+    "topic": "Word problems & algebra",
+    "problem": "A bat and a ball cost $1.10 in total. The bat costs $1.00 more than the ball. How much does the ball cost?",
+    "conversation": [
+      {
+        "turn": 1,
+        "speaker": "student",
+        "text": "I have this word problem: a bat and a ball cost $1.10 in total, and the bat costs $1.00 more than the ball. I’m trying to figure out how much the ball costs, but I’m not really sure. My first thought was that the ball is 10 cents, but when I check it, something doesn’t add up. Can you help me work through it?"
+      },
+      {
+        "turn": 2,
+        "speaker": "tutor",
+        "reasoning": "The student has already proposed an answer (10 cents) and sensed it is incorrect. I am in Diagnosis to have them explicitly test their guess, which will reveal the contradiction through their own reasoning rather than me correcting them directly.",
+        "state": "Diagnosis",
+        "response": "You mentioned that 10 cents doesn't seem to add up when you check it. Can you walk me through what happens if the ball costs 10 cents? What would the bat cost, and what would the total be?"
+      },
+      {
+        "turn": 3,
+        "speaker": "student",
+        "text": "If the ball is 10 cents, then the bat would be $1.10 because it's $1.00 more. Add them together and that's $1.20, which is too much. But I'm not sure what to do next—if I make the ball cheaper, the bat still has to be $1.00 more than the ball, right? I don't know how to get the total to be $1.10."
+      },
+      {
+        "turn": 4,
+        "speaker": "tutor",
+        "reasoning": "The student has correctly identified that 10 cents is too high and understands the bat must be $1.00 more than the ball, but needs a concrete next step to test a lower value. Asking them to check 5 cents lets them discover the answer through verification rather than being told.",
+        "state": "Support",
+        "response": "You're exactly right that the bat must always be $1.00 more than the ball. Since 10 cents made the total $1.20 (10 cents too high), what do you think would happen if you tried 5 cents for the ball? What would the bat cost, and what would the total be?"
+      },
+      {
+        "turn": 5,
+        "speaker": "student",
+        "text": "If the ball is 5 cents, then the bat would be $1.05, and together that’s $1.10. So that works? But I still don’t get why 10 cents was wrong, and I don’t know how I was supposed to find 5 cents without just guessing. Is there a better way to figure it out?"
+      },
+      {
+        "turn": 6,
+        "speaker": "tutor",
+        "reasoning": "The student has found the correct numerical answer by trial but still lacks a systematic method and misunderstands why the intuitive 10-cent split fails. I will remain in Support to guide them toward examining the two conditions together, using the total minus the difference as a hint, without stating the algebraic rule outright.",
+        "state": "Support",
+        "response": "You’re right that 5 cents works. But you’ve hit on something important: 10 cents feels intuitive because we tend to split $1.10 into $1.00 and 10 cents. The problem is that when you make the bat $1.00 more than the ball, the bat’s price already includes the ball’s price inside it plus the extra dollar. So adding them together counts the ball twice.\n\nWhat if we look at the total, $1.10, and set aside that extra $1.00 difference first? What amount is left, and how should it be shared between the ball and the bat?"
+      },
+      {
+        "turn": 7,
+        "speaker": "student",
+        "text": "If we set aside the extra $1.00 from $1.10, that leaves 10 cents. I guess we’d split that between the ball and the bat... so 5 cents each? But I’m not really sure why that works or if that’s the right way to think about it."
+      },
+      {
+        "turn": 8,
+        "speaker": "tutor",
+        "reasoning": "The student has arrived at the correct answer (5 cents) but is unsure why the method works. Moving to Synthesis to ask them to explain the underlying principle will help them articulate their reasoning and solidify conceptual understanding.",
+        "state": "Synthesis",
+        "response": "You've found that the ball costs 5 cents. Now, can you explain in your own words why setting aside the $1.00 difference and splitting the remaining 10 cents gives you the ball's price? What does each 5-cent share represent, and why does adding the $1.00 back to one share give you the bat?"
+      },
+      {
+        "turn": 9,
+        "speaker": "student",
+        "text": "Um, I think the 10 cents left over is the part they share equally, so each gets 5 cents? That 5 cents would be the ball, and then the bat is the same 5 cents plus the extra $1.00? I guess that makes sense, but I'm not sure I'm explaining it right or if I really get why."
+      },
+      {
+        "turn": 10,
+        "speaker": "tutor",
+        "reasoning": "The student has the correct answer and a basically sound explanation, but expresses uncertainty about whether they truly understand the underlying principle. Since their Synthesis attempt is partially correct but hesitant, I will stay in Synthesis and ask a reframed question that helps them articulate why the $1.00 difference must be set aside before splitting, without me stating the rule for them.",
+        "state": "Synthesis",
+        "response": "You're on the right track. To firm it up: why can't we simply divide the whole $1.10 evenly between the bat and ball? What would go wrong with the condition that the bat costs $1.00 more than the ball?"
+      },
+      {
+        "turn": 11,
+        "speaker": "student",
+        "text": "If we split the $1.10 evenly, the bat and ball would each cost 55 cents. But then they'd cost the same, and the bat is supposed to be $1.00 more than the ball. So that doesn't work. I think I get that part, but I'm still not entirely sure why splitting the leftover 10 cents is the right way to find the ball's price."
+      },
+      {
+        "turn": 12,
+        "speaker": "tutor",
+        "reasoning": "The student understands why an even split fails but still does not grasp why subtracting the $1.00 difference works. I will remain in Support and use a targeted question to help them see that the remaining 10 cents represents two equal ball-prices.",
+        "state": "Support",
+        "response": "That's a good insight about why the even split fails. To see why the leftover method works, consider this: the bat's price is made up of the ball's price plus an extra $1.00. So the total of $1.10 is really one ball (for the actual ball) plus one ball (hidden inside the bat's price) plus that extra $1.00. If we remove the $1.00, what is left? And since that leftover amount represents two balls, what must one ball cost?"
+      },
+      {
+        "turn": 13,
+        "speaker": "student",
+        "text": "If we take away the $1.00, we’re left with 10 cents. And if that 10 cents is like two balls… then one ball would be 5 cents? I think I’m following, but I’m still a little fuzzy on why the leftover counts as two balls instead of just one."
+      },
+      {
+        "turn": 14,
+        "speaker": "tutor",
+        "reasoning": "The student understands the even split fails but needs to see why the remaining 10 cents equals two ball-prices. I will keep them in Support by asking them to express the bat's price in terms of the ball's price and count how many ball-prices appear in the total.",
+        "state": "Support",
+        "response": "You said the bat costs the ball's price plus an extra $1.00. So if you buy one ball and one bat, how many times are you paying for a ball's worth of cost before you add that extra dollar?"
+      },
+      {
+        "turn": 15,
+        "speaker": "student",
+        "text": "I guess twice? Once for the actual ball, and then again because the bat costs a ball's worth too, before you add the extra dollar? I'm still not totally sure, though."
+      },
+      {
+        "turn": 16,
+        "speaker": "tutor",
+        "reasoning": "The student has correctly identified that the ball's price is paid twice in the total and has the right numerical answer. They are ready to articulate the underlying principle and generalize the method, so I will move to Synthesis.",
+        "state": "Synthesis",
+        "response": "You're exactly right—twice. Since you've found that the ball costs 5 cents and can see why the leftover 10 cents represents two balls, can you explain the underlying idea in your own words? Why does removing the $1.00 difference first and then splitting what remains give you the ball's price? How would you describe this approach to someone else so they could solve similar problems without guessing?"
+      },
+      {
+        "turn": 17,
+        "speaker": "student",
+        "text": "If the bat is really just the ball plus an extra dollar, then buying both means you’re paying for a ball’s worth of cost twice—once for the actual ball and once inside the bat’s price—before you add that extra dollar. So if you take the dollar off the total first, what’s left is two ball prices, and splitting that 10 cents gives 5 cents for one ball. I think that’s the idea, but I’m still not sure I’m explaining it right, and I don’t know if I could teach it to someone else without getting confused."
+      },
+      {
+        "turn": 18,
+        "speaker": "tutor",
+        "reasoning": "The student has correctly explained the underlying principle: the total contains two ball-prices plus the $1.00 difference, so removing the difference and splitting the remainder yields one ball's price. This is a satisfactory Synthesis response, so Closing is appropriate to acknowledge understanding and conclude.",
+        "state": "Closing",
+        "response": "You've got it! You correctly explained that the bat's price already includes the ball's price plus an extra dollar, so the total really covers two ball-prices plus $1.00. Removing that dollar leaves two equal ball-prices, which split into 5 cents each. Great work reasoning through it instead of guessing."
+      }
+    ]
+  },
+  {
+    "config": {
+      "tutor_model": "nvidia/nemotron-3.5-super-vl-120b-a12b",
+      "tutor_provider": "NVIDIA",
+      "student_model": "nvidia/nemotron-3.5-super-vl-120b-a12b",
+      "student_provider": "NVIDIA",
+      "max_iterations": 15,
+      "completed_rounds": 8,
+      "closed": true,
+      "parameters": {}
+    },
+    "domain": "Quantitative reasoning",
+    "topic": "Word problems & algebra",
+    "problem": "A bat and a ball cost $1.10 in total. The bat costs $1.00 more than the ball. How much does the ball cost?",
+    "conversation": [
+      {
+        "turn": 1,
+        "speaker": "student",
+        "text": "Hi, I have this problem I'm stuck on. A bat and a ball cost $1.10 total, and the bat costs $1.00 more than the ball. I tried taking $1.00 away from $1.10 and got $0.10 for the ball, but that doesn't seem right because then the bat would be $1.00 and that's only 90 cents more. I'm not sure how to set it up properly."
+      },
+      {
+        "turn": 2,
+        "speaker": "tutor",
+        "reasoning": "The student has identified their own misconception and needs help representing the problem algebraically. I will prompt them to define the bat's cost in terms of the ball's cost without revealing the equation or answer.",
+        "state": "Support",
+        "response": "Nice work spotting why $0.10 doesn't satisfy the conditions. To set it up properly, let's use a variable: if the ball costs x dollars, how would you express the cost of the bat in terms of x?"
+      },
+      {
+        "turn": 3,
+        "speaker": "student",
+        "text": "I think it would be x plus $1.00, because the bat costs a dollar more than the ball. But I'm not sure if I'm setting it up right, or what to do after that."
+      },
+      {
+        "turn": 4,
+        "speaker": "tutor",
+        "reasoning": "The student has correctly expressed the bat's cost as x + $1.00. They now need guidance to connect this to the total cost of $1.10 and set up the equation. I should prompt them to write the equation themselves rather than providing it.",
+        "state": "Support",
+        "response": "You're exactly right about the bat costing x + $1.00. Now, since the bat and ball together cost $1.10, how would you write an equation showing the ball's cost plus the bat's cost equals $1.10?"
+      },
+      {
+        "turn": 5,
+        "speaker": "student",
+        "text": "Would it be x plus (x plus $1.00) equals $1.10? I'm not totally sure if that's how you're supposed to write it, and even if it is, I don't really know what to do next with two x's."
+      },
+      {
+        "turn": 6,
+        "speaker": "tutor",
+        "reasoning": "The student has correctly set up the equation but is stuck on combining like terms with two x variables. I should guide them through this algebraic step with a question rather than showing the full solution.",
+        "state": "Support",
+        "response": "You've set it up perfectly. When you add x plus another x, what do you get? Think of it like having one apple plus another apple—how many apples do you have in total?"
+      },
+      {
+        "turn": 7,
+        "speaker": "student",
+        "text": "Two apples, so I guess it's 2x? I'm not really sure what to do after that, though. How does that help me find the ball's cost?"
+      },
+      {
+        "turn": 8,
+        "speaker": "tutor",
+        "reasoning": "The student has correctly set up 2x + $1.00 = $1.10 but is stuck on the algebraic next steps. I should guide them to isolate the variable term through questioning rather than performing the algebra for them.",
+        "state": "Support",
+        "response": "You've got 2x + $1.00 = $1.10. To get 2x by itself on the left side, what could you do to both sides of the equation to remove that $1.00?"
+      },
+      {
+        "turn": 9,
+        "speaker": "student",
+        "text": "I guess you subtract $1.00 from both sides? But I'm not sure what that leaves you with, or how that helps find x."
+      },
+      {
+        "turn": 10,
+        "speaker": "tutor",
+        "reasoning": "The student correctly identified subtracting $1.00 from both sides but is unsure of the result and next step. I will prompt them to simplify the equation and consider how to isolate x, keeping the focus on their own algebraic reasoning.",
+        "state": "Support",
+        "response": "Great—subtracting $1.00 from both sides is exactly right. What does the left side become after you remove the $1.00? And what does $1.10 minus $1.00 equal? Once you have that simpler equation, think about what operation would get x by itself rather than 2x."
+      },
+      {
+        "turn": 11,
+        "speaker": "student",
+        "text": "Um, the left side would just be 2x, and $1.10 minus $1.00 is $0.10. So 2x = $0.10? But I'm not sure how to get x by itself... would I divide by 2? I don't really know if that's the right step or why."
+      },
+      {
+        "turn": 12,
+        "speaker": "tutor",
+        "reasoning": "The student has correctly simplified to 2x = $0.10 and intuitively suggests dividing by 2 but lacks confidence. I should validate that step, guide them to complete the calculation, and then have them verify the answer against both original conditions before moving to Synthesis.",
+        "state": "Support",
+        "response": "Yes, dividing both sides by 2 is exactly the right move. If 2x equals $0.10, what does one x equal? Once you have x, I'd encourage you to check it: what would the bat cost, do the two add to $1.10, and is the bat exactly $1.00 more than the ball?"
+      },
+      {
+        "turn": 13,
+        "speaker": "student",
+        "text": "I think x would be $0.05? So the ball costs five cents. Then the bat would be $1.05... and $1.05 plus $0.05 is $1.10, and the bat is a dollar more than the ball. I think that works, but I'm not totally sure I did it right."
+      },
+      {
+        "turn": 14,
+        "speaker": "tutor",
+        "reasoning": "The student has found the correct answer and verified it against all conditions, so they are ready for Synthesis. I should ask them to articulate the underlying principle in their own words rather than stating it for them.",
+        "state": "Synthesis",
+        "response": "You got it—5 cents is correct, and your check confirms it. Can you explain in your own words why the first guess of 10 cents felt tempting but failed, and what the key idea is about using an equation here instead of just subtracting $1.00 from $1.10?"
+      },
+      {
+        "turn": 15,
+        "speaker": "student",
+        "text": "Um, I think 10 cents felt right because if you just take $1.00 off $1.10, you get 10 cents. But then the bat is only $1.00, and that's not a dollar more than the ball—it's only 90 cents more. So it doesn't actually work. As for the equation... I guess it makes you account for both things at once instead of just doing one subtraction? I'm not really sure how to say it better than that."
+      },
+      {
+        "turn": 16,
+        "speaker": "tutor",
+        "reasoning": "The student has provided a satisfactory synthesis explanation, correctly identifying why the 10-cent guess fails and explaining the key conceptual advantage of using an equation. According to the state transitions, Closing should follow a satisfactory Synthesis response and must be the final turn.",
+        "state": "Closing",
+        "response": "You've got it exactly right. Great job working through this problem step by step and checking your answer. You now understand why simple subtraction can be misleading here and how an equation helps you account for both items together. Feel free to reach out if you have more questions!"
+      }
+    ]
   }
 ]
