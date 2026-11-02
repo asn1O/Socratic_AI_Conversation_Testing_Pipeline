@@ -1,0 +1,259 @@
+"""Conversation testing pipeline coordinating student and tutor models."""
+
+import json
+import logging
+import os
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+from dotenv import load_dotenv
+
+from .model import Model
+from .prompt_generator import generate_student_prompt, generate_tutor_prompt
+from .validator import validate_student_turn, validate_tutor_turn
+
+logger = logging.getLogger("conversation_pipeline")
+logger.setLevel(logging.INFO)
+
+
+def load_models_from_file(models_path: str) -> List[Model]:
+    """Load model configurations from a JSON file into a list of Model objects."""
+    path = Path(models_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"models file not found: {models_path}")
+
+    load_dotenv()
+    with path.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    if not isinstance(data, list):
+        raise ValueError(f"Expected a JSON list in {models_path}")
+
+    return [Model.from_dict(entry) for entry in data]
+
+
+def get_model_by_index_or_name(models: List[Model], index: Optional[int] = None, name: Optional[str] = None) -> Model:
+    """Select a model by index or by matching substring in its model_name."""
+    if not models:
+        raise ValueError("Models list is empty")
+
+    if index is not None:
+        if 0 <= index < len(models):
+            return models[index]
+        raise IndexError(f"Model index {index} out of bounds (0 to {len(models) - 1})")
+
+    if name:
+        target = name.strip().lower()
+        for m in models:
+            if target in m.model_name.lower():
+                return m
+        raise ValueError(f"No model found matching name '{name}'")
+
+    return models[0]
+
+
+def run_single_conversation(
+    tutor_model: Model,
+    student_model: Model,
+    max_iterations: int = 15,
+    max_tutor_retries: int = 5,
+    problem: Optional[str] = None,
+    topic: Optional[str] = None,
+    domain: Optional[str] = None,
+    parameters: Optional[Dict[str, Any]] = None,
+    definitions: Optional[Dict[str, Any]] = None,
+    data_dir: str = "data",
+    generator_id: Optional[str] = None,
+    require_closing: bool = False,
+    mock: bool = False,
+) -> Tuple[bool, Optional[Path], Dict[str, Any]]:
+    """
+    Run a multi-turn conversation between a student model and a tutor model.
+
+    Flow:
+      For round 0 .. max_iterations-1:
+        1. Student prompt generated -> Student model called -> validate student response.
+        2. Tutor prompt generated -> Tutor model called in retry loop -> validate tutor JSON.
+        3. If tutor state == "Closing", break immediately.
+      Save valid conversation to data/{tutor_stem}/{generator_id}-set[n].json.
+    """
+    conversation: List[Dict[str, Any]] = []
+    closed = False
+    rounds_completed = 0
+
+    problem_text = problem or "A bat and a ball cost $1.10 in total. The bat costs $1.00 more than the ball. How much does the ball cost?"
+    topic_text = topic or "Word problems & algebra"
+    domain_text = domain or "Quantitative reasoning"
+
+    logger.info(
+        "Starting conversation test: Tutor=%s (%s), Student=%s (%s)",
+        tutor_model.model_name,
+        tutor_model.provider,
+        student_model.model_name,
+        student_model.provider,
+    )
+
+    for i in range(max_iterations):
+        rounds_completed = i + 1
+        turn_student = 2 * i + 1
+        turn_tutor = 2 * i + 2
+
+        # -------------------------------------------------------------
+        # 1. Student Turn
+        # -------------------------------------------------------------
+        student_prompt = generate_student_prompt(
+            conversation_history=conversation,
+            parameters=parameters,
+            definitions=definitions,
+            problem=problem_text,
+            topic=topic_text,
+            domain=domain_text,
+        )
+
+        if mock:
+            # Mock responses for testing
+            if i == 0:
+                student_reply = "I think the ball costs 10 cents, because $1.10 minus $1.00 is $0.10."
+            elif i == 1:
+                student_reply = "Wait, if the ball is 10 cents and the bat is $1 more, the bat would be $1.10, which totals $1.20! So the ball must be 5 cents."
+            else:
+                student_reply = "In general, when one item is X more than another, you subtract the difference from the total and divide by 2."
+            student_tokens = 25
+        else:
+            success, raw_student_reply, student_tokens, err = student_model.call_model(student_prompt)
+            if not success or not raw_student_reply:
+                logger.error("Student model failed on turn %d: error=%s", turn_student, err)
+                return False, None, {"error": f"student model call failed: {err}"}
+            student_reply = raw_student_reply
+
+        valid_student, student_text, student_err = validate_student_turn(student_reply, parameters)
+        if not valid_student:
+            logger.warning("Student turn %d failed validation: %s", turn_student, student_err)
+
+        conversation.append({
+            "turn": turn_student,
+            "speaker": "student",
+            "text": student_text or student_reply,
+        })
+        logger.info("Student turn %d recorded (%d words)", turn_student, len((student_text or "").split()))
+
+        # -------------------------------------------------------------
+        # 2. Tutor Turn (with retry loop for valid JSON structure)
+        # -------------------------------------------------------------
+        tutor_turn_valid = False
+        tutor_payload: Optional[Dict[str, Any]] = None
+        last_tutor_err = ""
+
+        for retry in range(max_tutor_retries):
+            tutor_prompt = generate_tutor_prompt(
+                conversation_history=conversation,
+                parameters=parameters,
+                definitions=definitions,
+                problem=problem_text,
+                topic=topic_text,
+                domain=domain_text,
+            )
+
+            if mock:
+                if i == 0:
+                    raw_tutor_reply = json.dumps({
+                        "reasoning": "Student made the common intuitive mistake of subtracting 1 from 1.10. Needs guidance to check total cost.",
+                        "state": "Support",
+                        "response": "Let's check that. If the ball is 10 cents, and the bat costs $1.00 more than the ball, how much would the bat cost?",
+                    })
+                elif i == 1:
+                    raw_tutor_reply = json.dumps({
+                        "reasoning": "Student self-corrected and found 5 cents. Now prompt them to articulate the general rule.",
+                        "state": "Synthesis",
+                        "response": "Spot on! In general, if you have two items where one costs $D more than the other and the total is $T, what is the general formula to find the smaller item's cost?",
+                    })
+                else:
+                    raw_tutor_reply = json.dumps({
+                        "reasoning": "Student formulated the general rule correctly.",
+                        "state": "Closing",
+                        "response": "Excellent deduction! You've mastered this concept completely. Ready for the next challenge?",
+                    })
+                tutor_tokens = 50
+            else:
+                success, raw_tutor_reply, tutor_tokens, err = tutor_model.call_model(tutor_prompt)
+                if not success or not raw_tutor_reply:
+                    logger.warning("Tutor model call failed on retry %d: error=%s", retry + 1, err)
+                    last_tutor_err = f"model call error: {err}"
+                    continue
+
+            is_valid, parsed, val_err = validate_tutor_turn(raw_tutor_reply, parameters)
+            if is_valid and parsed:
+                tutor_turn_valid = True
+                tutor_payload = parsed
+                break
+            else:
+                last_tutor_err = val_err
+                logger.warning(
+                    "Tutor turn %d retry %d/%d rejected: %s",
+                    turn_tutor,
+                    retry + 1,
+                    max_tutor_retries,
+                    val_err,
+                )
+
+        if not tutor_turn_valid or not tutor_payload:
+            logger.error("Tutor model failed to provide a valid turn after %d retries. Aborting conversation.", max_tutor_retries)
+            tutor_model.write_rejected_response(
+                conversation,
+                data_dir=data_dir,
+                generator_id=generator_id,
+                reason=f"Tutor failed structural validation on turn {turn_tutor}: {last_tutor_err}",
+            )
+            return False, None, {"error": f"tutor failed validation on turn {turn_tutor}: {last_tutor_err}"}
+
+        state = tutor_payload["state"]
+        conversation.append({
+            "turn": turn_tutor,
+            "speaker": "tutor",
+            "reasoning": tutor_payload["reasoning"],
+            "state": state,
+            "response": tutor_payload["response"],
+        })
+        logger.info("Tutor turn %d recorded (state: %s)", turn_tutor, state)
+
+        # -------------------------------------------------------------
+        # 3. Check for Closing state
+        # -------------------------------------------------------------
+        if state.lower() == "closing":
+            closed = True
+            logger.info("Conversation concluded naturally with 'Closing' state at round %d", rounds_completed)
+            break
+
+    if require_closing and not closed:
+        logger.warning("Conversation did not reach 'Closing' state within %d iterations; rejecting.", max_iterations)
+        tutor_model.write_rejected_response(
+            conversation,
+            data_dir=data_dir,
+            generator_id=generator_id,
+            reason="Did not reach Closing state within max_iterations",
+        )
+        return False, None, {"error": "did not reach Closing state"}
+
+    # -----------------------------------------------------------------
+    # Save conversation to data folder
+    # -----------------------------------------------------------------
+    record = {
+        "config": {
+            "tutor_model": tutor_model.model_name,
+            "tutor_provider": tutor_model.provider,
+            "student_model": student_model.model_name,
+            "student_provider": student_model.provider,
+            "max_iterations": max_iterations,
+            "completed_rounds": rounds_completed,
+            "closed": closed,
+            "parameters": parameters or {},
+        },
+        "domain": domain_text,
+        "topic": topic_text,
+        "problem": problem_text,
+        "conversation": conversation,
+    }
+
+    save_path = tutor_model.write_response(record, data_dir=data_dir, generator_id=generator_id)
+    logger.info("Saved conversation to %s", save_path)
+    return True, save_path, record

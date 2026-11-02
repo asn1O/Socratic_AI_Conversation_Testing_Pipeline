@@ -1,0 +1,242 @@
+
+{
+  "bank_id": "SOCRATIC_EVAL_V1",
+  "version": "1.0",
+  "questions": [
+    {
+      "scenario_id": "PHY_001",
+      "domain": "Physics",
+      "subtopic": "Newton's Third Law",
+      "difficulty": "medium",
+      "question": "If a truck collides with a small car, why does the car experience significantly more damage if both vehicles exert equal and opposite forces on each other?",
+      "learning_objective": "Understand Newton's Third Law and distinguish interaction force from acceleration.",
+      "target_misconception": "The larger object exerts a greater force during a collision.",
+      "expected_concepts": [
+        "Newton's Third Law",
+        "Equal and opposite interaction forces",
+        "Newton's Second Law",
+        "Relationship between mass and acceleration"
+      ],
+      "solution_steps": [
+        "Identify the two interacting objects.",
+        "Apply Newton's Third Law to establish that the forces are equal in magnitude and opposite in direction.",
+        "Apply Newton's Second Law (F = ma).",
+        "Explain that the smaller mass experiences greater acceleration.",
+        "Distinguish acceleration from damage, noting that structural properties and energy absorption also matter."
+      ],
+      "reference_answer": "Both vehicles exert equal and opposite forces on each other. However, the car has a much smaller mass, so it experiences greater acceleration. The amount of damage also depends on structural strength, deformation and energy absorption."
+    },
+    {
+      "scenario_id": "PHY_002",
+      "domain": "Physics",
+      "subtopic": "Work and Energy",
+      "difficulty": "easy",
+      "question": "A person carries a heavy bag horizontally across a room at a constant height. Is the person doing mechanical work on the bag? Why or why not?",
+      "learning_objective": "Understand the relationship between force, displacement and mechanical work.",
+      "target_misconception": "Any application of force automatically means mechanical work is done.",
+      "expected_concepts": [
+        "Mechanical work",
+        "W = Fd cos(theta)",
+        "Force perpendicular to displacement",
+        "Work-energy relationship"
+      ],
+      "solution_steps": [
+        "Identify the force exerted by the person on the bag.",
+        "Identify the direction of displacement.",
+        "Determine the angle between force and displacement.",
+        "Apply W = Fd cos(theta).",
+        "Conclude that the mechanical work done by the supporting force is zero for ideal horizontal motion."
+      ],
+      "reference_answer": "The upward supporting force is perpendicular to the horizontal displacement. Therefore, the mechanical work done by this force on the bag is zero. The person still expends metabolic energy, but that is different from mechanical work on the bag."
+    },
+    {
+      "scenario_id": "BIO_001",
+      "domain": "Biology",
+      "subtopic": "Osmosis",
+      "difficulty": "medium",
+      "question": "Why does a red blood cell swell and potentially burst when placed in distilled water?",
+      "learning_objective": "Understand osmosis and the effect of solution concentration on cell volume.",
+      "target_misconception": "Water moves from regions of lower water concentration to higher water concentration.",
+      "expected_concepts": [
+        "Osmosis",
+        "Semipermeable membrane",
+        "Water potential",
+        "Hypotonic solution",
+        "Cell membrane"
+      ],
+      "solution_steps": [
+        "Compare the solute concentrations inside and outside the cell.",
+        "Identify distilled water as hypotonic relative to the cell contents.",
+        "Explain the movement of water across the semipermeable membrane.",
+        "Explain why the cell increases in volume.",
+        "Connect excessive swelling to membrane rupture (hemolysis)."
+      ],
+      "reference_answer": "Distilled water has a lower solute concentration than the inside of the red blood cell. Water enters the cell through osmosis, causing it to swell. Since red blood cells lack a rigid cell wall, excessive water entry can cause them to burst."
+    },
+    {
+      "scenario_id": "BIO_002",
+      "domain": "Biology",
+      "subtopic": "Natural Selection",
+      "difficulty": "medium",
+      "question": "A population of bacteria is exposed to an antibiotic. After several generations, most surviving bacteria are resistant. Did the antibiotic cause the bacteria to develop resistance because they needed it?",
+      "learning_objective": "Understand natural selection and the role of pre-existing genetic variation.",
+      "target_misconception": "Organisms develop adaptive mutations because they need to survive.",
+      "expected_concepts": [
+        "Genetic variation",
+        "Mutation",
+        "Natural selection",
+        "Selection pressure",
+        "Reproduction and inheritance"
+      ],
+      "solution_steps": [
+        "Establish that bacterial populations can contain genetic variation.",
+        "Explain that some bacteria may already possess resistance-conferring mutations.",
+        "Identify the antibiotic as a selection pressure.",
+        "Explain why susceptible bacteria are more likely to die.",
+        "Explain how resistant bacteria reproduce and increase in frequency."
+      ],
+      "reference_answer": "The antibiotic does not deliberately cause bacteria to develop the mutations they need. Resistant variants may already exist due to random mutations or acquired genes. The antibiotic acts as a selection pressure, allowing resistant bacteria to survive and reproduce more successfully."
+    },
+    {
+      "scenario_id": "MAT_001",
+      "domain": "Mathematics",
+      "subtopic": "Algebra and Quadratic Equations",
+      "difficulty": "easy",
+      "question": "A student solves x² = 9 and concludes that x = 3 is the only solution. Is the student correct? Explain.",
+      "learning_objective": "Understand solving quadratic equations and the significance of positive and negative roots.",
+      "target_misconception": "Taking the square root of a number only produces its positive root.",
+      "expected_concepts": [
+        "Square roots",
+        "Quadratic equations",
+        "Positive and negative numbers",
+        "Verification by substitution"
+      ],
+      "solution_steps": [
+        "Interpret the equation x² = 9.",
+        "Ask which numbers produce 9 when squared.",
+        "Identify both 3 and -3.",
+        "Verify both solutions by substitution.",
+        "Explain why both satisfy the original equation."
+      ],
+      "reference_answer": "The student is incorrect. Both x = 3 and x = -3 satisfy the equation because 3² = 9 and (-3)² = 9. Therefore, the complete solution set is x = ±3."
+    },
+    {
+      "scenario_id": "MAT_002",
+      "domain": "Mathematics",
+      "subtopic": "Probability",
+      "difficulty": "medium",
+      "question": "A fair coin is flipped five times and lands on heads every time. Is tails now more likely to occur on the sixth flip?",
+      "learning_objective": "Understand independent events and avoid the gambler's fallacy.",
+      "target_misconception": "An outcome becomes more likely because it has not occurred recently.",
+      "expected_concepts": [
+        "Independent events",
+        "Probability",
+        "Fair coin",
+        "Gambler's fallacy"
+      ],
+      "solution_steps": [
+        "Establish that the coin is fair.",
+        "Identify the sixth flip as a separate event.",
+        "Explain that previous outcomes do not influence the next flip.",
+        "Calculate the probability of heads and tails.",
+        "Address why the intuition that tails is due to occur is incorrect."
+      ],
+      "reference_answer": "No. Each flip is independent. The probability of heads and tails on the sixth flip remains 1/2, regardless of the previous five outcomes."
+    },
+    {
+      "scenario_id": "ECO_001",
+      "domain": "Economics",
+      "subtopic": "Supply and Demand",
+      "difficulty": "medium",
+      "question": "Suppose demand for a product increases while its supply remains unchanged. Why would its market price generally increase?",
+      "learning_objective": "Understand equilibrium price and the interaction between supply and demand.",
+      "target_misconception": "An increase in demand automatically increases the quantity supplied without affecting price.",
+      "expected_concepts": [
+        "Demand curve",
+        "Supply curve",
+        "Market equilibrium",
+        "Excess demand",
+        "Equilibrium price"
+      ],
+      "solution_steps": [
+        "Establish the initial market equilibrium.",
+        "Explain what an increase in demand means.",
+        "Identify the resulting excess demand at the original price.",
+        "Explain the pressure this creates on prices.",
+        "Identify the new equilibrium with a higher price and quantity."
+      ],
+      "reference_answer": "An increase in demand shifts the demand curve to the right. At the original price, quantity demanded exceeds quantity supplied. Competition among buyers creates upward pressure on prices until a new equilibrium is reached, generally with a higher price and higher quantity."
+    },
+    {
+      "scenario_id": "ECO_002",
+      "domain": "Economics",
+      "subtopic": "Opportunity Cost",
+      "difficulty": "easy",
+      "question": "A student spends three hours studying instead of working a part-time job that pays 200 rupees per hour. What is the opportunity cost of studying?",
+      "learning_objective": "Understand opportunity cost as the value of the next-best alternative.",
+      "target_misconception": "Opportunity cost only includes money directly spent.",
+      "expected_concepts": [
+        "Scarcity",
+        "Choice",
+        "Opportunity cost",
+        "Next-best alternative"
+      ],
+      "solution_steps": [
+        "Identify the decision being made.",
+        "Identify the next-best alternative that was given up.",
+        "Calculate the earnings sacrificed.",
+        "Explain that this represents the opportunity cost, assuming the job was the next-best alternative."
+      ],
+      "reference_answer": "The opportunity cost is 600 rupees, representing the wages the student gives up by spending three hours studying instead of working. More generally, opportunity cost is the value of the next-best alternative forgone."
+    },
+    {
+      "scenario_id": "CS_001",
+      "domain": "Computer Science",
+      "subtopic": "Time Complexity",
+      "difficulty": "medium",
+      "question": "A student claims that an algorithm with two nested loops must always have O(n²) time complexity. Is this statement correct?",
+      "learning_objective": "Understand how loop execution counts determine asymptotic time complexity.",
+      "target_misconception": "Nested loops always imply quadratic complexity.",
+      "expected_concepts": [
+        "Asymptotic complexity",
+        "Nested loops",
+        "Loop bounds",
+        "Operation counting"
+      ],
+      "solution_steps": [
+        "Clarify that the number of loop iterations determines complexity.",
+        "Consider an example where both loops execute n times.",
+        "Calculate the total operations as n × n.",
+        "Consider a nested loop where the inner loop executes a constant number of times.",
+        "Explain why nesting alone does not determine complexity."
+      ],
+      "reference_answer": "No. Two nested loops do not necessarily imply O(n²). If both loops execute n times, the complexity is O(n²). However, if the inner loop executes a constant number of times, the complexity may be O(n). The iteration bounds determine the complexity."
+    },
+    {
+      "scenario_id": "CS_002",
+      "domain": "Computer Science",
+      "subtopic": "Operating Systems and Virtual Memory",
+      "difficulty": "hard",
+      "question": "Why can a program use a virtual memory address that is not directly mapped to a physical memory location, yet still execute successfully?",
+      "learning_objective": "Understand virtual addressing, page tables and address translation.",
+      "target_misconception": "Every virtual memory address must have a permanent physical memory location.",
+      "expected_concepts": [
+        "Virtual memory",
+        "Virtual address space",
+        "Page tables",
+        "Memory management unit",
+        "Page faults",
+        "Demand paging"
+      ],
+      "solution_steps": [
+        "Distinguish virtual addresses from physical addresses.",
+        "Explain how the MMU translates virtual addresses using page tables.",
+        "Explain that not every virtual page needs to be resident in physical memory.",
+        "Describe what happens when a process accesses a non-resident but valid page.",
+        "Explain how the operating system handles a page fault and loads the required page.",
+        "Distinguish valid non-resident pages from invalid memory accesses."
+      ],
+      "reference_answer": "A program uses virtual addresses that are translated into physical addresses by the MMU using page tables. A valid virtual page need not currently be in physical memory. If it is not resident, accessing it may trigger a page fault, allowing the operating system to load it from secondary storage or otherwise resolve the mapping. An invalid access, however, can result in a segmentation fault or equivalent error."
+    }
+  ]
+}
