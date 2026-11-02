@@ -516,10 +516,148 @@ def generate_student_prompt(
     return result
 
 
-def generate_tutor_prompt(*args: Any, **kwargs: Any) -> str:
-    """Tutor prompt generator (kept empty for now as requested)."""
-    # Kept empty for now as tutor prompt template is pending
-    return ""
+def generate_tutor_prompt(
+    conversation_history: Union[str, List[Dict[str, Any]], None] = "",
+    scenario_id: Optional[str] = None,
+    question_data: Optional[Dict[str, Any]] = None,
+    prompt_template: Optional[str] = None,
+    template_path: Optional[Union[str, Path]] = None,
+    question_bank: Optional[List[Dict[str, Any]]] = None,
+    question_bank_path: Optional[Union[str, Path]] = None,
+    parameters: Optional[Dict[str, Any]] = None,
+    definitions: Optional[Dict[str, Any]] = None,
+    problem: Optional[str] = None,
+    question: Optional[str] = None,
+    topic: Optional[str] = None,
+    domain: Optional[str] = None,
+    difficulty: Optional[str] = None,
+    learning_objective: Optional[str] = None,
+    target_misconception: Optional[str] = None,
+    empty_history_text: str = "no conversation history",
+    **kwargs: Any,
+) -> str:
+    """
+    Generate the prompt for the tutor model.
+
+    Defaults to socratic_tutor_prompt_small.md and populates placeholders:
+      - {{QUESTION}} / {{PROBLEM}}
+      - {{CONVERSATION_HISTORY}}
+      - Optional contextual fields ({{DOMAIN}}, {{SUBTOPIC}}, {{DIFFICULTY}}, etc.)
+    """
+    # If the first positional argument was passed as a prompt template containing template markers
+    if (
+        isinstance(conversation_history, str)
+        and prompt_template is None
+        and ("# SOCRATIC TUTOR" in conversation_history or "# BASE TUTOR" in conversation_history or "{{" in conversation_history)
+    ):
+        prompt_template = conversation_history
+        conversation_history = ""
+
+    # Load prompt template
+    if prompt_template:
+        template = prompt_template
+    elif template_path:
+        template = Path(template_path).read_text(encoding="utf-8").strip()
+    else:
+        template = _read_prompt_template(
+            "socratic_tutor_prompt_small.md",
+            fallback_filename="socratic_tutor_prompt.md",
+        )
+
+    if not template.strip():
+        # Fallback template matching socratic_tutor_prompt_small.md
+        template = (
+            "# SOCRATIC TUTOR — SYSTEM PROMPT\n\n"
+            "You are an expert Socratic tutor. Your goal is to help students develop conceptual understanding "
+            "through questioning, hints and reflection rather than simply providing answers.\n\n"
+            "## OUTPUT FORMAT\n\n"
+            "Return ONLY valid JSON:\n"
+            "{\n"
+            '  "reasoning": "Brief pedagogical rationale for the selected approach.",\n'
+            '  "state": "Diagnosis",\n'
+            '  "response": "The actual message shown to the student."\n'
+            "}\n\n"
+            "# TUTOR CONTEXT\n\n"
+            "## 1. PROBLEM STATEMENT\n\n"
+            "{{QUESTION}}\n\n"
+            "---\n\n"
+            "## 2. CONVERSATION HISTORY\n\n"
+            "{{CONVERSATION_HISTORY}}\n\n"
+            "---\n\n"
+            "Generate your next tutor response based on the system instructions and the conversation context provided."
+        )
+
+    # Resolve question scenario from question_bank.json
+    selected_scenario_id = (
+        scenario_id
+        or (parameters.get("scenario_id") if parameters else None)
+        or kwargs.get("scenario_id")
+    )
+    q_scenario = (
+        question_data
+        if question_data
+        else get_question_scenario(
+            scenario_id=selected_scenario_id,
+            question_bank=question_bank,
+            question_bank_path=question_bank_path,
+        )
+    )
+
+    scen_id = selected_scenario_id or q_scenario.get("scenario_id", "SCEN_001")
+    dom = domain or q_scenario.get("domain", "")
+    sub = topic or q_scenario.get("subtopic", "")
+    diff = difficulty or q_scenario.get("difficulty", "")
+    q_text = question or problem or q_scenario.get("question", "")
+    learn_obj = learning_objective or q_scenario.get("learning_objective", "")
+    misconc = target_misconception or q_scenario.get("target_misconception", "")
+
+    # Resolve conversation history
+    conv_input = conversation_history
+    if conv_input == "" and parameters and "conversation_history" in parameters:
+        conv_input = parameters["conversation_history"]
+
+    history_str = normalize_conversation_history(
+        conv_input, empty_placeholder=empty_history_text
+    )
+
+    # Perform structured placeholder replacements
+    replacements: Dict[str, str] = {
+        "QUESTION": q_text,
+        "PROBLEM": q_text,
+        "CONVERSATION_HISTORY": history_str,
+        "PASTE THE ENTIRE CONVERSATION HERE": history_str,
+        "SCENARIO_ID": scen_id,
+        "DOMAIN": dom,
+        "SUBTOPIC": sub,
+        "TOPIC": sub,
+        "DIFFICULTY": diff,
+        "LEARNING_OBJECTIVE": learn_obj,
+        "TARGET_MISCONCEPTION": misconc,
+    }
+
+    if parameters:
+        for k, v in parameters.items():
+            replacements[k.upper()] = str(v)
+            replacements[f"insert_{k.lower()}"] = str(v)
+
+    if definitions:
+        for k, v in definitions.items():
+            replacements[f"{k.upper()}_DEF"] = str(v)
+            replacements[f"insert_{k.lower()}_def"] = str(v)
+
+    for k, v in kwargs.items():
+        replacements[k.upper()] = str(v)
+        replacements[f"insert_{k.lower()}"] = str(v)
+
+    result = template
+    for key, value in replacements.items():
+        result = result.replace(f"{{{{{key}}}}}", value)
+        result = result.replace(f"{{{{{key.lower()}}}}}", value)
+        result = result.replace(f"<<{key}>>", value)
+        result = result.replace(f"<<{key.lower()}>>", value)
+        result = result.replace(f"[{key}]", value)
+
+    return result
 
 
 class StudentPromptGenerator:
@@ -578,21 +716,75 @@ class StudentPromptGenerator:
         )
 
 
+class TutorPromptGenerator:
+    """Class-based prompt generator for Socratic tutor simulator."""
+
+    def __init__(
+        self,
+        template_path: Optional[Union[str, Path]] = None,
+        question_bank_path: Optional[Union[str, Path]] = None,
+    ):
+        self.template_path = (
+            Path(template_path)
+            if template_path
+            else REPO_ROOT / "socratic_tutor_prompt_small.md"
+        )
+        self.question_bank_path = (
+            Path(question_bank_path)
+            if question_bank_path
+            else REPO_ROOT / "question_bank.json"
+        )
+        self.question_bank = load_question_bank(self.question_bank_path)
+
+    def generate_tutor_prompt(
+        self,
+        conversation_history: Union[str, List[Dict[str, Any]], None] = "",
+        scenario_id: Optional[str] = None,
+        **kwargs: Any,
+    ) -> str:
+        """Generate the complete tutor prompt."""
+        return generate_tutor_prompt(
+            conversation_history=conversation_history,
+            scenario_id=scenario_id,
+            template_path=self.template_path,
+            question_bank=self.question_bank,
+            question_bank_path=self.question_bank_path,
+            **kwargs,
+        )
+
+    def generate_prompt(
+        self,
+        conversation_history: Union[str, List[Dict[str, Any]], None] = "",
+        scenario_id: Optional[str] = None,
+        **kwargs: Any,
+    ) -> str:
+        """Alias for generate_tutor_prompt."""
+        return self.generate_tutor_prompt(
+            conversation_history=conversation_history,
+            scenario_id=scenario_id,
+            **kwargs,
+        )
+
+
 DatasetPromptGenerator = StudentPromptGenerator
 
 
 def main() -> None:
     """Quick preview and sanity check of generated prompts."""
-    generator = StudentPromptGenerator()
-    print("=== Default Prompt (STU_001, empty conversation history) ===")
-    print(generator.generate_student_prompt())
+    stu_generator = StudentPromptGenerator()
+    print("=== Default Student Prompt (STU_001, empty conversation history) ===")
+    print(stu_generator.generate_student_prompt())
     print("\n" + "=" * 60 + "\n")
-    print("=== STU_002 with MAT_001 and non-empty history ===")
+
+    tutor_generator = TutorPromptGenerator()
+    print("=== Default Tutor Prompt (socratic_tutor_prompt_small.md, empty history) ===")
+    print(tutor_generator.generate_tutor_prompt())
+    print("\n" + "=" * 60 + "\n")
+    print("=== Tutor Prompt with Turn 1 History and MAT_001 ===")
     print(
-        generator.generate_student_prompt(
-            persona_id="STU_002",
+        tutor_generator.generate_tutor_prompt(
             scenario_id="MAT_001",
-            conversation_history="Turn 1 (Tutor): What numbers squared equal 9?",
+            conversation_history="Turn 1 (Student): I think the answer is x = 3 because 3 squared is 9.",
         )
     )
 

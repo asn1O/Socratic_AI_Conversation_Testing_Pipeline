@@ -109,6 +109,49 @@ def test_student_prompt_generator_class():
     assert "scenario_id: BIO_001" in prompt2
 
 
-def test_generate_tutor_prompt_empty():
+def test_generate_tutor_prompt_default():
     prompt = generate_tutor_prompt()
-    assert prompt == ""
+    assert "SOCRATIC TUTOR" in prompt
+    assert "Diagnosis" in prompt
+    assert "Newton's Third Law" in prompt or "truck collides" in prompt
+    assert "no conversation history" in prompt
+    assert "{{" not in prompt
+    assert "}}" not in prompt
+
+
+def test_generate_tutor_prompt_with_history():
+    history_str = "Turn 1 (Student): I think force depends on speed."
+    prompt = generate_tutor_prompt(conversation_history=history_str)
+    assert history_str in prompt
+    assert "no conversation history" not in prompt
+
+    history_list = [
+        {"turn": 1, "speaker": "student", "text": "Is work zero?"},
+        {"turn": 2, "speaker": "tutor", "state": "Diagnosis", "response": "Why do you think so?"},
+    ]
+    prompt_list = generate_tutor_prompt(conversation_history=history_list)
+    assert "Turn 1 (Student): Is work zero?" in prompt_list
+    assert "Turn 2 (Tutor [Diagnosis]): Why do you think so?" in prompt_list
+
+
+def test_generate_tutor_prompt_scenario_id():
+    prompt = generate_tutor_prompt(scenario_id="MAT_001")
+    assert "A student solves x² = 9" in prompt
+
+    prompt_custom = generate_tutor_prompt(problem="Solve 3x + 5 = 20")
+    assert "Solve 3x + 5 = 20" in prompt_custom
+
+
+def test_tutor_prompt_generator_class():
+    from src.prompt_generator import TutorPromptGenerator
+
+    gen = TutorPromptGenerator()
+    prompt = gen.generate_tutor_prompt(scenario_id="BIO_001")
+    assert "red blood cell" in prompt
+    assert "{{" not in prompt
+
+    prompt2 = gen.generate_prompt(
+        scenario_id="CS_001",
+        conversation_history="Turn 1 (Student): Nested loops are always O(n^2).",
+    )
+    assert "Nested loops are always O(n^2)." in prompt2
