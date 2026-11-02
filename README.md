@@ -1,1 +1,112 @@
-# Socratic_AI_Conversation_Testing_Pipeline
+# Conversation Testing Pipeline
+
+A dedicated testing framework to evaluate how effectively tutor models conduct Socratic conversations when interacting with an LLM impersonating a student. The pipeline executes multi-turn conversations, enforces structured tutor turn validation with automatic retries, monitors for prompt config leakage, and saves completed conversations in set-based JSON files partitioned by tutor model.
+
+---
+
+## Directory Structure
+
+```
+Conversation_testing_pipeline/
+├── .env.example              # Environment variables template
+├── requirements.txt          # Python dependencies
+├── README.md                 # Documentation
+├── tutor_prompt.md           # Tutor instructions template (empty for now)
+├── student_prompt.md         # Student instructions template (empty for now)
+├── models/
+│   ├── tutors.json           # Available tutor models (Google, NVIDIA, OpenRouter)
+│   └── students.json         # Available student impersonation models
+├── src/
+│   ├── __init__.py
+│   ├── model.py              # LLM client, rate limiting, and JSON set storage
+│   ├── prompt_generator.py   # Extensible student & tutor prompt builders
+│   ├── validator.py          # Turn-level validation & config leakage detection
+│   └── pipeline.py           # Multi-turn conversation loop coordinator
+├── scripts/
+│   ├── run_pipeline.py       # CLI runner supporting --tutor-index, --student-index
+│   └── validate_conversations.py # Standalone dataset auditor for data/
+├── data/                     # Stored conversations partitioned by tutor model
+└── tests/
+    ├── test_validator.py     # Unit tests for turn validations & leakage checks
+    ├── test_prompt_generator.py # Unit tests for prompt generation & injection
+    └── test_pipeline.py      # End-to-end tests for the conversation loop
+```
+
+---
+
+## How It Works
+
+### 1. Multi-Turn Interaction Loop
+For each conversation (up to `max_iterations`, default: 15 rounds / 30 turns):
+1. **Student Turn**:
+   - The student model is queried with the conversation history and task context.
+   - The response is validated and recorded (`speaker: "student"`).
+2. **Tutor Turn**:
+   - The tutor model is queried with the updated conversation history.
+   - The tutor must return a valid structured JSON response:
+     ```json
+     {
+       "reasoning": "<rationale for pedagogical decision>",
+       "state": "Diagnosis | Support | Synthesis | Closing",
+       "response": "<message shown to student>"
+     }
+     ```
+   - If the response is malformed, missing required fields, has an invalid state, or leaks prompt configurations in reasoning, the tutor model is automatically retried (up to `max_tutor_retries`, default: 5).
+3. **Closing Detection**:
+   - If the tutor's validated state is `"Closing"`, the loop concludes immediately.
+
+### 2. Conversation Storage & Format
+Valid conversations are stored under `data/{tutor_model_stem}/` in the format:
+```
+data/{provider}_{model_name}/{DATASET_GENERATOR_ID}-set[{set_index}].json
+```
+- Each set file contains a JSON array with up to **15 conversations**.
+- When a file reaches 15 conversations, the pipeline automatically advances to the next set file (`set[1].json`, `set[2].json`, etc.).
+- Rejected conversations or malformed turns are recorded in `data/rejected_responses/` for debugging.
+
+---
+
+## Quick Start
+
+### 1. Setup Environment
+```bash
+pip install -r requirements.txt
+cp .env.example .env
+# Fill in your API keys and DATASET_GENERATOR_ID in .env
+```
+
+### 2. Run Pipeline
+
+Run using model indices:
+```bash
+# Run 1 conversation using tutor index 0 and student index 0
+python3 scripts/run_pipeline.py --tutor-index 0 --student-index 0 --iterations 1
+
+# Run with custom max rounds
+python3 scripts/run_pipeline.py --tutor-index 1 --student-index 0 --max-iterations 12 --iterations 3
+```
+
+Run using model name matching:
+```bash
+python3 scripts/run_pipeline.py --tutor-model gemini-3.5-flash --student-model gemini-2.5-flash-lite
+```
+
+Offline Mock Mode (test without consuming API credits):
+```bash
+python3 scripts/run_pipeline.py --mock --iterations 2
+```
+
+### 3. Audit Dataset
+Run the standalone dataset validator over all saved conversations:
+```bash
+python3 scripts/validate_conversations.py
+```
+To remove any invalid conversations:
+```bash
+python3 scripts/validate_conversations.py --delete-invalid
+```
+
+### 4. Run Tests
+```bash
+pytest tests/ -v
+```
