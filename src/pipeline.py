@@ -67,6 +67,7 @@ def run_single_conversation(
     generator_id: Optional[str] = None,
     require_closing: bool = False,
     mock: bool = False,
+    log_file: Optional[str] = None,
 ) -> Tuple[bool, Optional[Path], Dict[str, Any]]:
     """
     Run a multi-turn conversation between a student model and a tutor model.
@@ -78,6 +79,19 @@ def run_single_conversation(
         3. If tutor state == "Closing", break immediately.
       Save valid conversation to data/{tutor_stem}/{generator_id}-set[n].json.
     """
+    if log_file and log_file.strip().lower() not in ("none", "false", ""):
+        log_p = Path(log_file)
+        log_p.parent.mkdir(parents=True, exist_ok=True)
+        all_handlers = list(logger.handlers) + list(logging.getLogger().handlers)
+        has_file_handler = any(
+            isinstance(h, logging.FileHandler) and Path(getattr(h, "baseFilename", "")).resolve() == log_p.resolve()
+            for h in all_handlers
+        )
+        if not has_file_handler:
+            fh = logging.FileHandler(str(log_p), mode="a", encoding="utf-8")
+            fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+            logger.addHandler(fh)
+
     conversation: List[Dict[str, Any]] = []
     closed = False
     rounds_completed = 0

@@ -111,8 +111,28 @@ def main():
         action="store_true",
         help="Use mock model replies for testing without calling external APIs.",
     )
+    parser.add_argument(
+        "--log-file",
+        type=str,
+        default=str(PROJECT_ROOT / "logs" / "pipeline.log"),
+        help="Path to log file (default: logs/pipeline.log). Pass 'none' to disable file logging.",
+    )
 
     args = parser.parse_args()
+
+    # Configure logging handlers (console + optional log file)
+    handlers = [logging.StreamHandler(sys.stdout)]
+    if args.log_file and args.log_file.strip().lower() not in ("none", "false", ""):
+        log_path = Path(args.log_file)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        handlers.append(logging.FileHandler(str(log_path), mode="a", encoding="utf-8"))
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=handlers,
+        force=True,
+    )
 
     # Load models
     tutors = load_models_from_file(args.tutors_path)
@@ -136,6 +156,7 @@ def main():
     print(f"  Sessions      : {args.iterations}")
     print(f"  Max Turns     : {args.max_iterations * 2} ({args.max_iterations} rounds)")
     print(f"  Data Output   : {args.data_dir}")
+    print(f"  Log File      : {args.log_file if args.log_file else 'disabled'}")
     print(f"  Mock Mode     : {args.mock}")
     print("=" * 60 + "\n")
 
@@ -152,6 +173,7 @@ def main():
             generator_id=args.generator_id,
             require_closing=args.require_closing,
             mock=args.mock,
+            log_file=args.log_file,
         )
         if success and save_path:
             successful += 1
