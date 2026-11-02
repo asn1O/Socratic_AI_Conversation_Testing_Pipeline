@@ -215,3 +215,40 @@ def test_run_single_conversation_student_retry_success(tmp_path, monkeypatch):
     assert len(record["conversation"]) == 2
 
 
+def test_run_single_conversation_log_file(tmp_path):
+    tutor = Model(
+        provider="Google",
+        api_key="test",
+        model_name="gemini-3.5-flash",
+        url="http://localhost",
+    )
+    student = Model(
+        provider="Google",
+        api_key="test",
+        model_name="gemini-2.5-flash-lite",
+        url="http://localhost",
+    )
+
+    data_dir = tmp_path / "data"
+    log_file = tmp_path / "custom_logs" / "test_run.log"
+
+    success, save_path, record = run_single_conversation(
+        tutor_model=tutor,
+        student_model=student,
+        max_iterations=3,
+        data_dir=str(data_dir),
+        generator_id="test_gen",
+        mock=True,
+        log_file=str(log_file),
+    )
+
+    assert success is True
+    assert log_file.exists()
+    content = log_file.read_text(encoding="utf-8")
+    assert "Starting conversation test" in content
+    assert "COMPLETE CONVERSATION TRANSCRIPT" in content
+    assert "Turn 1 [STUDENT" in content
+    assert "Turn 2 [TUTOR" in content
+
+
+
