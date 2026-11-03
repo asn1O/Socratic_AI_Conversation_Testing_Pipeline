@@ -440,4 +440,72 @@ def test_run_pipeline_cli_tutor_prompt_arg(monkeypatch):
     assert "Tutor prompt file not found: non_existent_file.md" in result_invalid.stderr
 
 
+def test_run_pipeline_cli_default_log_and_summary(tmp_path):
+    import subprocess
+    import sys
+    from scripts.run_pipeline import PROJECT_ROOT
+
+    # Run in mock mode without specifying --log-file; should default to logs/{tutor_stem}.log
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(PROJECT_ROOT / "scripts" / "run_pipeline.py"),
+            "--mock",
+            "--iterations", "2",
+            "--max-iterations", "2",
+        ],
+        cwd=str(PROJECT_ROOT),
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+
+    # Output should include final summary with counts
+    assert "PIPELINE RUN SUMMARY" in result.stdout
+    assert "Total Sessions        : 2" in result.stdout
+    assert "Successfully Stored   : 2" in result.stdout
+    assert "Failed Sessions       : 0" in result.stdout
+    assert "Success Rate          : 100.0%" in result.stdout
+
+    # Verify log file was created using provider and model name (tutor 0 is Google gemini-3.5-flash)
+    expected_log = PROJECT_ROOT / "logs" / "NVIDIA_nvidia_nemotron-3.5-super-vl-120b-a12b.log"
+    # Actually, check what tutor 0 is in tutors.json
+    # tutors.json has NVIDIA_nvidia_nemotron-3.5-super-vl-120b-a12b as index 0!
+    assert expected_log.exists()
+    content = expected_log.read_text(encoding="utf-8")
+    assert "PIPELINE RUN SUMMARY" in content
+    assert "Total Sessions        : 2" in content
+    assert "Successfully Stored   : 2" in content
+
+
+def test_run_pipeline_cli_failure_summary():
+    import subprocess
+    import sys
+    from scripts.run_pipeline import PROJECT_ROOT
+
+    # Run in mock mode with require-closing and max-iterations 1 (will fail because mock requires 3 rounds for closing)
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(PROJECT_ROOT / "scripts" / "run_pipeline.py"),
+            "--mock",
+            "--iterations", "2",
+            "--max-iterations", "1",
+            "--require-closing",
+            "--log-file", "none",
+        ],
+        cwd=str(PROJECT_ROOT),
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+    assert "PIPELINE RUN SUMMARY" in result.stdout
+    assert "Total Sessions        : 2" in result.stdout
+    assert "Successfully Stored   : 0" in result.stdout
+    assert "Failed Sessions       : 2" in result.stdout
+    assert "Success Rate          : 0.0%" in result.stdout
+    assert "Failure Breakdown     :" in result.stdout
+    assert "did not reach Closing state" in result.stdout
+
+
 

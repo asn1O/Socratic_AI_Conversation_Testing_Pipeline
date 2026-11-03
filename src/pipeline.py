@@ -89,7 +89,11 @@ def run_single_conversation(
         3. If tutor state == "Closing", break immediately.
       Save valid conversation to data/{tutor_stem}/{generator_id}-set[n].json.
     """
-    if log_file and log_file.strip().lower() not in ("none", "false", ""):
+    if log_file and str(log_file).strip().lower() == "auto":
+        repo_root = Path(__file__).resolve().parent.parent
+        log_file = str(repo_root / "logs" / f"{tutor_model.response_file_stem}.log")
+
+    if log_file and str(log_file).strip().lower() not in ("none", "false", ""):
         log_p = Path(log_file)
         log_p.parent.mkdir(parents=True, exist_ok=True)
         all_handlers = list(logger.handlers) + list(logging.getLogger().handlers)

@@ -123,8 +123,8 @@ def main():
     parser.add_argument(
         "--log-file",
         type=str,
-        default=str(PROJECT_ROOT / "logs" / "pipeline.log"),
-        help="Path to log file (default: logs/pipeline.log). Pass 'none' to disable file logging.",
+        default=None,
+        help="Path to log file (default: logs/<provider>_<model_name>.log). Pass 'none' to disable file logging.",
     )
     parser.add_argument(
         "--scenario-id",
@@ -140,20 +140,6 @@ def main():
     )
 
     args = parser.parse_args()
-
-    # Configure logging handlers (console + optional log file)
-    handlers = [logging.StreamHandler(sys.stdout)]
-    if args.log_file and args.log_file.strip().lower() not in ("none", "false", ""):
-        log_path = Path(args.log_file)
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        handlers.append(logging.FileHandler(str(log_path), mode="a", encoding="utf-8"))
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-        handlers=handlers,
-        force=True,
-    )
 
     # Load models
     tutors = load_models_from_file(args.tutors_path)
@@ -179,6 +165,28 @@ def main():
         name=args.student_model,
     )
 
+    # Determine log file path (defaults to logs/{provider}_{model_name}.log based on tutor model)
+    if args.log_file is None:
+        log_file_path = str(PROJECT_ROOT / "logs" / f"{tutor.response_file_stem}.log")
+    elif args.log_file.strip().lower() in ("none", "false", ""):
+        log_file_path = None
+    else:
+        log_file_path = args.log_file
+
+    # Configure logging handlers (console + optional log file)
+    handlers = [logging.StreamHandler(sys.stdout)]
+    if log_file_path:
+        log_path = Path(log_file_path)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        handlers.append(logging.FileHandler(str(log_path), mode="a", encoding="utf-8"))
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=handlers,
+        force=True,
+    )
+
     print("\n" + "=" * 60)
     print("Conversation Testing Pipeline Configuration")
     print(f"  Tutor Model   : {tutor.provider} - {tutor.model_name}")
@@ -189,11 +197,15 @@ def main():
     print(f"  Sessions      : {args.iterations}")
     print(f"  Max Turns     : {args.max_iterations * 2} ({args.max_iterations} rounds)")
     print(f"  Data Output   : {args.data_dir}")
-    print(f"  Log File      : {args.log_file if args.log_file else 'disabled'}")
+    print(f"  Log File      : {log_file_path if log_file_path else 'disabled'}")
     print(f"  Mock Mode     : {args.mock}")
     print("=" * 60 + "\n")
 
     successful = 0
+    failed = 0
+    failure_details = []
+    saved_conversations = []
+
     for session_idx in range(args.iterations):
         logger.info("Starting session %d/%d", session_idx + 1, args.iterations)
         success, save_path, record = run_single_conversation(
@@ -206,20 +218,62 @@ def main():
             generator_id=args.generator_id,
             require_closing=args.require_closing,
             mock=args.mock,
-            log_file=args.log_file,
+            log_file=log_file_path,
             scenario_id=args.scenario_id,
             persona_id=args.persona_id,
             tutor_prompt_path=tutor_prompt_path,
         )
         if success and save_path:
             successful += 1
+            saved_conversations.append(str(save_path))
+            logger.info("[Session %d] Successfully saved to: %s", session_idx + 1, save_path)
             print(f"[Session {session_idx + 1}] Successfully saved to: {save_path}")
         else:
-            print(f"[Session {session_idx + 1}] Failed: {record.get('error', 'unknown error')}")
+            failed += 1
+            err_msg = record.get("error", "unknown error") if isinstance(record, dict) else "unknown error"
+            failure_details.append({
+                "session": session_idx + 1,
+                "error": err_msg,
+            })
+            logger.warning("[Session %d] Failed: %s", session_idx + 1, err_msg)
+            print(f"[Session {session_idx + 1}] Failed: {err_msg}")
 
-    print("\n" + "=" * 60)
-    print(f"Summary: {successful}/{args.iterations} conversations successfully saved.")
-    print("=" * 60 + "\n")
+    # -------------------------------------------------------------
+    # Final Run Summary & Statistics (logged to file and console)
+    # -------------------------------------------------------------
+    total = args.iterations
+    success_rate = (successful / total * 100.0) if total > 0 else 0.0
+
+    summary_lines = [
+        "=" * 60,
+        "PIPELINE RUN SUMMARY",
+        "=" * 60,
+        f"  Tutor Model           : {tutor.provider} - {tutor.model_name}",
+        f"  Student Model         : {student.provider} - {student.model_name}",
+        f"  Tutor Prompt          : {tutor_prompt_path.name}",
+        f"  Total Sessions        : {total}",
+        f"  Successfully Stored   : {successful}",
+        f"  Failed Sessions       : {failed}",
+        f"  Success Rate          : {success_rate:.1f}%",
+    ]
+
+    if saved_conversations:
+        summary_lines.append("  Saved File Locations  :")
+        unique_paths = sorted(set(saved_conversations))
+        for p in unique_paths:
+            count = saved_conversations.count(p)
+            summary_lines.append(f"    - {p} ({count} conversation{'s' if count > 1 else ''})")
+
+    if failure_details:
+        summary_lines.append("  Failure Breakdown     :")
+        for item in failure_details:
+            summary_lines.append(f"    - Session {item['session']}: {item['error']}")
+
+    summary_lines.append("=" * 60)
+    summary_text = "\n" + "\n".join(summary_lines)
+
+    logger.info(summary_text)
+    print(f"\nSummary: {successful}/{total} conversations successfully saved ({failed} failed).\n")
 
 
 if __name__ == "__main__":
