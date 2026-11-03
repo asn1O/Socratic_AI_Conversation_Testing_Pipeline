@@ -155,3 +155,27 @@ def test_tutor_prompt_generator_class():
         conversation_history="Turn 1 (Student): Nested loops are always O(n^2).",
     )
     assert "Nested loops are always O(n^2)." in prompt2
+
+
+def test_generate_tutor_prompt_custom_file(tmp_path):
+    custom_file = tmp_path / "custom_tutor.md"
+    custom_file.write_text("# CUSTOM TUTOR\nProblem: {{QUESTION}}\nHistory: {{CONVERSATION_HISTORY}}", encoding="utf-8")
+
+    prompt = generate_tutor_prompt(problem="What is 2+2?", template_path=custom_file)
+    assert "# CUSTOM TUTOR" in prompt
+    assert "Problem: What is 2+2?" in prompt
+    assert "History: no conversation history" in prompt
+
+
+def test_generate_tutor_prompt_named_templates():
+    prompt_small = generate_tutor_prompt(template_path="socratic_tutor_prompt_small.md")
+    assert "SOCRATIC TUTOR" in prompt_small
+
+    prompt_full = generate_tutor_prompt(template_path="socratic_tutor_prompt.md")
+    assert "SOCRATIC TUTOR" in prompt_full
+
+
+def test_generate_tutor_prompt_missing_file():
+    import pytest
+    with pytest.raises(FileNotFoundError, match="Tutor prompt template not found"):
+        generate_tutor_prompt(template_path="non_existent_prompt_template_9999.md")

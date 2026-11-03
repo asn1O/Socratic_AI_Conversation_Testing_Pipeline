@@ -91,6 +91,12 @@ Run using model name matching:
 python3 scripts/run_pipeline.py --tutor-model gemini-3.5-flash --student-model gemini-2.5-flash-lite
 ```
 
+Select tutor prompt template (defaults to `socratic_tutor_prompt_small.md` if omitted):
+```bash
+# Pass custom tutor prompt template file
+python3 scripts/run_pipeline.py --tutor-prompt socratic_tutor_prompt.md
+```
+
 Offline Mock Mode (test without consuming API credits):
 ```bash
 python3 scripts/run_pipeline.py --mock --iterations 2

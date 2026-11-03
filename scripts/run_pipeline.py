@@ -42,6 +42,15 @@ def main():
         help="Path to students JSON file.",
     )
     parser.add_argument(
+        "--tutor-prompt",
+        "--tutor-prompt-file",
+        "--tutor-prompt-path",
+        dest="tutor_prompt",
+        type=str,
+        default="socratic_tutor_prompt_small.md",
+        help="Path or filename of tutor prompt markdown file (default: socratic_tutor_prompt_small.md).",
+    )
+    parser.add_argument(
         "--tutor-index",
         type=int,
         default=0,
@@ -150,6 +159,15 @@ def main():
     tutors = load_models_from_file(args.tutors_path)
     students = load_models_from_file(args.students_path)
 
+    # Resolve tutor prompt template path
+    tutor_prompt_path = Path(args.tutor_prompt)
+    if not tutor_prompt_path.is_file():
+        candidate = PROJECT_ROOT / args.tutor_prompt
+        if candidate.is_file():
+            tutor_prompt_path = candidate
+        else:
+            parser.error(f"Tutor prompt file not found: {args.tutor_prompt}")
+
     tutor = get_model_by_index_or_name(
         tutors,
         index=None if args.tutor_model else args.tutor_index,
@@ -164,6 +182,7 @@ def main():
     print("\n" + "=" * 60)
     print("Conversation Testing Pipeline Configuration")
     print(f"  Tutor Model   : {tutor.provider} - {tutor.model_name}")
+    print(f"  Tutor Prompt  : {tutor_prompt_path.name} ({tutor_prompt_path})")
     print(f"  Student Model : {student.provider} - {student.model_name}")
     print(f"  Student Persona: {args.persona_id if args.persona_id != 'random' else 'random (sampled per conversation)'}")
     print(f"  Scenario ID   : {args.scenario_id if args.scenario_id != 'random' else 'random (sampled per conversation)'}")
@@ -190,6 +209,7 @@ def main():
             log_file=args.log_file,
             scenario_id=args.scenario_id,
             persona_id=args.persona_id,
+            tutor_prompt_path=tutor_prompt_path,
         )
         if success and save_path:
             successful += 1

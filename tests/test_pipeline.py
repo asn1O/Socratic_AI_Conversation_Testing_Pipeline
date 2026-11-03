@@ -333,4 +333,111 @@ def test_run_single_conversation_log_file(tmp_path):
     assert "Turn 2 [TUTOR" in content
 
 
+def test_run_single_conversation_tutor_prompt_default_and_custom(tmp_path):
+    tutor = Model(
+        provider="Google",
+        api_key="test",
+        model_name="gemini-3.5-flash",
+        url="http://localhost",
+    )
+    student = Model(
+        provider="Google",
+        api_key="test",
+        model_name="gemini-2.5-flash-lite",
+        url="http://localhost",
+    )
+    data_dir = tmp_path / "data"
+
+    # 1. Default tutor prompt -> socratic_tutor_prompt_small.md
+    success_def, _, record_def = run_single_conversation(
+        tutor_model=tutor,
+        student_model=student,
+        max_iterations=2,
+        data_dir=str(data_dir),
+        generator_id="test_default",
+        mock=True,
+    )
+    assert success_def is True
+    assert record_def["config"]["tutor_prompt"] == "socratic_tutor_prompt_small.md"
+
+    # 2. Custom tutor prompt -> socratic_tutor_prompt.md
+    success_custom, _, record_custom = run_single_conversation(
+        tutor_model=tutor,
+        student_model=student,
+        max_iterations=2,
+        data_dir=str(data_dir),
+        generator_id="test_custom",
+        mock=True,
+        tutor_prompt_path="socratic_tutor_prompt.md",
+    )
+    assert success_custom is True
+    assert record_custom["config"]["tutor_prompt"] == "socratic_tutor_prompt.md"
+
+
+def test_run_pipeline_cli_tutor_prompt_arg(monkeypatch):
+    import subprocess
+    import sys
+    from scripts.run_pipeline import PROJECT_ROOT
+
+    # Run run_pipeline.py with --help to verify argument is present
+    result = subprocess.run(
+        [sys.executable, str(PROJECT_ROOT / "scripts" / "run_pipeline.py"), "--help"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+    assert "--tutor-prompt" in result.stdout
+    assert "socratic_tutor_prompt_small.md" in result.stdout
+
+    # Run with default tutor prompt in mock mode
+    result_mock = subprocess.run(
+        [
+            sys.executable,
+            str(PROJECT_ROOT / "scripts" / "run_pipeline.py"),
+            "--mock",
+            "--iterations", "1",
+            "--max-iterations", "2",
+            "--log-file", "none",
+        ],
+        cwd=str(PROJECT_ROOT),
+        capture_output=True,
+        text=True,
+    )
+    assert result_mock.returncode == 0
+    assert "Tutor Prompt  : socratic_tutor_prompt_small.md" in result_mock.stdout
+
+    # Run with custom tutor prompt in mock mode
+    result_custom = subprocess.run(
+        [
+            sys.executable,
+            str(PROJECT_ROOT / "scripts" / "run_pipeline.py"),
+            "--mock",
+            "--tutor-prompt", "socratic_tutor_prompt.md",
+            "--iterations", "1",
+            "--max-iterations", "2",
+            "--log-file", "none",
+        ],
+        cwd=str(PROJECT_ROOT),
+        capture_output=True,
+        text=True,
+    )
+    assert result_custom.returncode == 0
+    assert "Tutor Prompt  : socratic_tutor_prompt.md" in result_custom.stdout
+
+    # Run with invalid tutor prompt file -> error
+    result_invalid = subprocess.run(
+        [
+            sys.executable,
+            str(PROJECT_ROOT / "scripts" / "run_pipeline.py"),
+            "--tutor-prompt", "non_existent_file.md",
+            "--mock",
+        ],
+        cwd=str(PROJECT_ROOT),
+        capture_output=True,
+        text=True,
+    )
+    assert result_invalid.returncode != 0
+    assert "Tutor prompt file not found: non_existent_file.md" in result_invalid.stderr
+
+
 

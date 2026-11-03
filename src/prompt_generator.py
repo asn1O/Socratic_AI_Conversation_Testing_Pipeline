@@ -267,17 +267,18 @@ def normalize_conversation_history(
 
 
 def _read_prompt_template(filename: str, fallback_filename: Optional[str] = None) -> str:
-    """Read a markdown prompt template from the repo root."""
-    primary_path = REPO_ROOT / filename
-    if primary_path.is_file():
-        content = primary_path.read_text(encoding="utf-8").strip()
-        if content:
-            return content
-
-    if fallback_filename:
-        fallback_path = REPO_ROOT / fallback_filename
-        if fallback_path.is_file():
-            content = fallback_path.read_text(encoding="utf-8").strip()
+    """Read a markdown prompt template from the file system or repo root."""
+    for fn in [filename, fallback_filename]:
+        if not fn:
+            continue
+        p = Path(fn)
+        if p.is_file():
+            content = p.read_text(encoding="utf-8").strip()
+            if content:
+                return content
+        repo_p = REPO_ROOT / fn
+        if repo_p.is_file():
+            content = repo_p.read_text(encoding="utf-8").strip()
             if content:
                 return content
 
@@ -590,7 +591,13 @@ def generate_tutor_prompt(
     if prompt_template:
         template = prompt_template
     elif template_path:
-        template = Path(template_path).read_text(encoding="utf-8").strip()
+        t_path = Path(template_path)
+        if not t_path.is_file() and (REPO_ROOT / template_path).is_file():
+            t_path = REPO_ROOT / template_path
+        if t_path.is_file():
+            template = t_path.read_text(encoding="utf-8").strip()
+        else:
+            raise FileNotFoundError(f"Tutor prompt template not found: {template_path}")
     else:
         template = _read_prompt_template(
             "socratic_tutor_prompt_small.md",
@@ -757,11 +764,13 @@ class TutorPromptGenerator:
         template_path: Optional[Union[str, Path]] = None,
         question_bank_path: Optional[Union[str, Path]] = None,
     ):
-        self.template_path = (
-            Path(template_path)
-            if template_path
-            else REPO_ROOT / "socratic_tutor_prompt_small.md"
-        )
+        if template_path:
+            t_path = Path(template_path)
+            if not t_path.is_file() and (REPO_ROOT / template_path).is_file():
+                t_path = REPO_ROOT / template_path
+            self.template_path = t_path
+        else:
+            self.template_path = REPO_ROOT / "socratic_tutor_prompt_small.md"
         self.question_bank_path = (
             Path(question_bank_path)
             if question_bank_path

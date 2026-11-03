@@ -4,7 +4,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from dotenv import load_dotenv
 
@@ -77,6 +77,7 @@ def run_single_conversation(
     log_file: Optional[str] = None,
     scenario_id: Optional[str] = None,
     persona_id: Optional[str] = None,
+    tutor_prompt_path: Optional[Union[str, Path]] = None,
 ) -> Tuple[bool, Optional[Path], Dict[str, Any]]:
     """
     Run a multi-turn conversation between a student model and a tutor model.
@@ -173,10 +174,20 @@ def run_single_conversation(
     if target_miscon:
         active_parameters["target_misconception"] = target_miscon
 
+    repo_root = Path(__file__).resolve().parent.parent
+    if tutor_prompt_path:
+        t_path = Path(tutor_prompt_path)
+        if not t_path.is_file() and (repo_root / tutor_prompt_path).is_file():
+            t_path = repo_root / tutor_prompt_path
+        resolved_tutor_prompt_path = t_path
+    else:
+        resolved_tutor_prompt_path = repo_root / "socratic_tutor_prompt_small.md"
+
     logger.info(
-        "Starting conversation test: Tutor=%s (%s), Student=%s (%s, Persona=%s/%s, Scenario=%s)",
+        "Starting conversation test: Tutor=%s (%s), TutorPrompt=%s, Student=%s (%s, Persona=%s/%s, Scenario=%s)",
         tutor_model.model_name,
         tutor_model.provider,
+        resolved_tutor_prompt_path.name,
         student_model.model_name,
         student_model.provider,
         resolved_persona_id,
@@ -316,6 +327,7 @@ def run_single_conversation(
             tutor_prompt = generate_tutor_prompt(
                 conversation_history=conversation,
                 scenario_id=resolved_scenario_id,
+                template_path=resolved_tutor_prompt_path,
                 parameters=active_parameters,
                 definitions=definitions,
                 problem=problem_text,
@@ -444,6 +456,7 @@ def run_single_conversation(
         "=" * 70,
         "COMPLETE CONVERSATION TRANSCRIPT",
         f"  Tutor Model   : {tutor_model.provider} - {tutor_model.model_name}",
+        f"  Tutor Prompt  : {resolved_tutor_prompt_path.name}",
         f"  Student Model : {student_model.provider} - {student_model.model_name} ({resolved_persona_id} - {persona_name})",
         f"  Scenario ID   : {resolved_scenario_id}",
         f"  Problem       : {problem_text}",
@@ -478,6 +491,7 @@ def run_single_conversation(
         "config": {
             "tutor_model": tutor_model.model_name,
             "tutor_provider": tutor_model.provider,
+            "tutor_prompt": resolved_tutor_prompt_path.name,
             "student_model": student_model.model_name,
             "student_provider": student_model.provider,
             "max_iterations": max_iterations,
