@@ -79,6 +79,88 @@ def test_run_single_conversation_mock(tmp_path):
     assert convo[-1]["state"] == "Closing"
     assert item["config"]["closed"] is True
 
+    # Verify persona and question bank details are recorded in parameters
+    params = item["config"]["parameters"]
+    assert params["persona_id"].startswith("STU_")
+    assert isinstance(params["persona_name"], str) and len(params["persona_name"]) > 0
+    assert "scenario_id" in params
+    assert "difficulty" in params
+    assert "learning_objective" in params
+    assert "target_misconception" in params
+    assert item["scenario_id"] == params["scenario_id"]
+
+
+def test_run_single_conversation_custom_scenario_and_persona(tmp_path):
+    tutor = Model(
+        provider="Google",
+        api_key="test",
+        model_name="gemini-3.5-flash",
+        url="http://localhost",
+    )
+    student = Model(
+        provider="Google",
+        api_key="test",
+        model_name="gemini-2.5-flash-lite",
+        url="http://localhost",
+    )
+
+    data_dir = tmp_path / "data"
+
+    success, save_path, record = run_single_conversation(
+        tutor_model=tutor,
+        student_model=student,
+        max_iterations=5,
+        scenario_id="PHY_001",
+        persona_id="STU_002",
+        data_dir=str(data_dir),
+        generator_id="test_gen",
+        mock=True,
+    )
+
+    assert success is True
+    assert record["scenario_id"] == "PHY_001"
+    assert record["domain"] == "Physics"
+    params = record["config"]["parameters"]
+    assert params["persona_id"] == "STU_002"
+    assert params["persona_name"] == "Confident but Incorrect"
+    assert params["scenario_id"] == "PHY_001"
+    assert params["difficulty"] == "medium"
+    assert "Newton's Third Law" in params["learning_objective"]
+
+
+def test_run_single_conversation_random_keyword(tmp_path):
+    tutor = Model(
+        provider="Google",
+        api_key="test",
+        model_name="gemini-3.5-flash",
+        url="http://localhost",
+    )
+    student = Model(
+        provider="Google",
+        api_key="test",
+        model_name="gemini-2.5-flash-lite",
+        url="http://localhost",
+    )
+
+    data_dir = tmp_path / "data"
+
+    success, save_path, record = run_single_conversation(
+        tutor_model=tutor,
+        student_model=student,
+        max_iterations=3,
+        scenario_id="random",
+        persona_id="random",
+        data_dir=str(data_dir),
+        generator_id="test_gen",
+        mock=True,
+    )
+
+    assert success is True
+    params = record["config"]["parameters"]
+    assert params["persona_id"].startswith("STU_")
+    assert record["scenario_id"] == params["scenario_id"]
+    assert len(params["scenario_id"]) > 0
+
 
 def test_set_file_splitting(tmp_path):
     tutor = Model(

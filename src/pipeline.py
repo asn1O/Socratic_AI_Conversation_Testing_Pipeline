@@ -9,7 +9,14 @@ from typing import Any, Dict, List, Optional, Tuple
 from dotenv import load_dotenv
 
 from .model import Model
-from .prompt_generator import generate_student_prompt, generate_tutor_prompt
+from .prompt_generator import (
+    generate_student_prompt,
+    generate_tutor_prompt,
+    get_question_scenario,
+    get_random_question_scenario,
+    get_random_student_persona,
+    get_student_persona,
+)
 from .validator import validate_student_turn, validate_tutor_turn
 
 logger = logging.getLogger("conversation_pipeline")
@@ -68,6 +75,8 @@ def run_single_conversation(
     require_closing: bool = False,
     mock: bool = False,
     log_file: Optional[str] = None,
+    scenario_id: Optional[str] = None,
+    persona_id: Optional[str] = None,
 ) -> Tuple[bool, Optional[Path], Dict[str, Any]]:
     """
     Run a multi-turn conversation between a student model and a tutor model.
@@ -96,16 +105,83 @@ def run_single_conversation(
     closed = False
     rounds_completed = 0
 
-    problem_text = problem or "A bat and a ball cost $1.10 in total. The bat costs $1.00 more than the ball. How much does the ball cost?"
-    topic_text = topic or "Word problems & algebra"
-    domain_text = domain or "Quantitative reasoning"
+    active_parameters = dict(parameters or {})
+
+    # 1. Resolve Scenario from Question Bank (random by default if not specified)
+    selected_scenario_id = scenario_id or active_parameters.get("scenario_id")
+    if not selected_scenario_id or str(selected_scenario_id).strip().lower() in ("random", "any"):
+        scenario_data = get_random_question_scenario()
+    else:
+        scenario_data = get_question_scenario(scenario_id=selected_scenario_id)
+
+    problem_text = (
+        problem
+        or active_parameters.get("problem")
+        or active_parameters.get("question")
+        or scenario_data.get("question")
+        or "A bat and a ball cost $1.10 in total. The bat costs $1.00 more than the ball. How much does the ball cost?"
+    )
+    topic_text = (
+        topic
+        or active_parameters.get("topic")
+        or active_parameters.get("subtopic")
+        or scenario_data.get("subtopic")
+        or "Word problems & algebra"
+    )
+    domain_text = (
+        domain
+        or active_parameters.get("domain")
+        or scenario_data.get("domain")
+        or "Quantitative reasoning"
+    )
+    difficulty_text = (
+        active_parameters.get("difficulty")
+        or scenario_data.get("difficulty")
+        or "easy"
+    )
+    learning_obj = (
+        active_parameters.get("learning_objective")
+        or scenario_data.get("learning_objective")
+        or ""
+    )
+    target_miscon = (
+        active_parameters.get("target_misconception")
+        or scenario_data.get("target_misconception")
+        or ""
+    )
+    resolved_scenario_id = scenario_data.get("scenario_id", "CUSTOM")
+
+    # 2. Resolve Student Persona (random by default if not specified)
+    selected_persona_id = (
+        persona_id
+        or active_parameters.get("persona_id")
+        or active_parameters.get("persona")
+    )
+    if not selected_persona_id or str(selected_persona_id).strip().lower() in ("random", "any"):
+        resolved_persona_id, persona_dict = get_random_student_persona()
+    else:
+        resolved_persona_id, persona_dict = get_student_persona(persona_id=selected_persona_id)
+    persona_name = persona_dict.get("persona_name", "Confused Beginner")
+
+    # 3. Populate active_parameters with student persona & question bank details
+    active_parameters["persona_id"] = resolved_persona_id
+    active_parameters["persona_name"] = persona_name
+    active_parameters["scenario_id"] = resolved_scenario_id
+    active_parameters["difficulty"] = difficulty_text
+    if learning_obj:
+        active_parameters["learning_objective"] = learning_obj
+    if target_miscon:
+        active_parameters["target_misconception"] = target_miscon
 
     logger.info(
-        "Starting conversation test: Tutor=%s (%s), Student=%s (%s)",
+        "Starting conversation test: Tutor=%s (%s), Student=%s (%s, Persona=%s/%s, Scenario=%s)",
         tutor_model.model_name,
         tutor_model.provider,
         student_model.model_name,
         student_model.provider,
+        resolved_persona_id,
+        persona_name,
+        resolved_scenario_id,
     )
 
     for i in range(max_iterations):
@@ -118,11 +194,16 @@ def run_single_conversation(
         # -------------------------------------------------------------
         student_prompt = generate_student_prompt(
             conversation_history=conversation,
-            parameters=parameters,
+            persona_id=resolved_persona_id,
+            scenario_id=resolved_scenario_id,
+            parameters=active_parameters,
             definitions=definitions,
             problem=problem_text,
             topic=topic_text,
             domain=domain_text,
+            difficulty=difficulty_text,
+            learning_objective=learning_obj,
+            target_misconception=target_miscon,
         )
 
         student_turn_valid = False
@@ -166,7 +247,7 @@ def run_single_conversation(
                 )
                 continue
 
-            valid_student, student_text, student_err = validate_student_turn(raw_student_reply, parameters)
+            valid_student, student_text, student_err = validate_student_turn(raw_student_reply, active_parameters)
             if not valid_student:
                 last_student_err = f"validation error: {student_err}"
                 logger.warning(
@@ -234,11 +315,15 @@ def run_single_conversation(
 
             tutor_prompt = generate_tutor_prompt(
                 conversation_history=conversation,
-                parameters=parameters,
+                scenario_id=resolved_scenario_id,
+                parameters=active_parameters,
                 definitions=definitions,
                 problem=problem_text,
                 topic=topic_text,
                 domain=domain_text,
+                difficulty=difficulty_text,
+                learning_objective=learning_obj,
+                target_misconception=target_miscon,
             )
 
             if mock:
@@ -279,7 +364,7 @@ def run_single_conversation(
                 )
                 continue
 
-            is_valid, parsed, val_err = validate_tutor_turn(raw_tutor_reply, parameters)
+            is_valid, parsed, val_err = validate_tutor_turn(raw_tutor_reply, active_parameters)
             if is_valid and parsed:
                 tutor_turn_valid = True
                 tutor_payload = parsed
@@ -359,7 +444,8 @@ def run_single_conversation(
         "=" * 70,
         "COMPLETE CONVERSATION TRANSCRIPT",
         f"  Tutor Model   : {tutor_model.provider} - {tutor_model.model_name}",
-        f"  Student Model : {student_model.provider} - {student_model.model_name}",
+        f"  Student Model : {student_model.provider} - {student_model.model_name} ({resolved_persona_id} - {persona_name})",
+        f"  Scenario ID   : {resolved_scenario_id}",
         f"  Problem       : {problem_text}",
         f"  Total Turns   : {len(conversation)} (Closed: {closed})",
         "=" * 70,
@@ -397,8 +483,9 @@ def run_single_conversation(
             "max_iterations": max_iterations,
             "completed_rounds": rounds_completed,
             "closed": closed,
-            "parameters": parameters or {},
+            "parameters": active_parameters,
         },
+        "scenario_id": resolved_scenario_id,
         "domain": domain_text,
         "topic": topic_text,
         "problem": problem_text,

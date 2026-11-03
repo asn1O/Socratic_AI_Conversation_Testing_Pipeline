@@ -68,9 +68,16 @@ def check_config_leakage(text: str, custom_parameters: Optional[Dict[str, Any]] 
     if difficulty_matches:
         flags.append(f"difficulty_config_leak: {difficulty_matches}")
 
-    # Check custom parameters if provided
+    # Check custom parameters if provided (skip standard metadata fields)
+    standard_meta_keys = {
+        "difficulty", "scenario_id", "persona_id", "persona_name",
+        "learning_objective", "target_misconception", "expected_concepts",
+        "problem", "question", "topic", "subtopic", "domain",
+    }
     if custom_parameters:
         for param_name, param_val in custom_parameters.items():
+            if param_name.lower() in standard_meta_keys:
+                continue
             if param_name.lower() in text.lower():
                 flags.append(f"custom_param_name_leak: {param_name}")
             if isinstance(param_val, str) and len(param_val) > 4 and param_val.lower() in text.lower():

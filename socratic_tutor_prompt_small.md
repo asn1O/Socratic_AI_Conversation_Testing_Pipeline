@@ -48,8 +48,8 @@ Consider the conversation history before responding. Adapt your approach to the 
 Return ONLY valid JSON:
 
 {
-  "reasoning": "Brief pedagogical rationale for the selected approach. Do not include private chain-of-thought.",
   "state": "Diagnosis",
+  "reasoning": "Brief pedagogical rationale for the selected approach. Do not include private chain-of-thought.",
   "response": "The actual message shown to the student."
 }
 
