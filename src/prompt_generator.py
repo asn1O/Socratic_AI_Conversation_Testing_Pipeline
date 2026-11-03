@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+import random
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -152,6 +153,7 @@ def get_question_scenario(
     question_bank: Optional[List[Dict[str, Any]]] = None,
     question_bank_path: Optional[Union[str, Path]] = None,
     index: Optional[int] = None,
+    randomize: bool = False,
 ) -> Dict[str, Any]:
     """Retrieve a question scenario by scenario_id or index from question_bank.json."""
     bank = question_bank if question_bank is not None else load_question_bank(question_bank_path)
@@ -160,6 +162,8 @@ def get_question_scenario(
 
     if scenario_id:
         target_id = scenario_id.strip().upper()
+        if target_id in ("RANDOM", "ANY"):
+            return random.choice(bank)
         for q in bank:
             if q.get("scenario_id", "").strip().upper() == target_id:
                 return q
@@ -167,20 +171,39 @@ def get_question_scenario(
     if index is not None and 0 <= index < len(bank):
         return bank[index]
 
+    if randomize:
+        return random.choice(bank)
+
     return bank[0]
+
+
+def get_random_question_scenario(
+    question_bank: Optional[List[Dict[str, Any]]] = None,
+    question_bank_path: Optional[Union[str, Path]] = None,
+) -> Dict[str, Any]:
+    """Return a randomly chosen scenario from question_bank.json."""
+    bank = question_bank if question_bank is not None else load_question_bank(question_bank_path)
+    if not bank:
+        return {}
+    return random.choice(bank)
 
 
 def get_student_persona(
     persona_id: Optional[str] = None,
     persona_data: Optional[Dict[str, Any]] = None,
+    randomize: bool = False,
 ) -> Tuple[str, Dict[str, Any]]:
-    """Retrieve a student persona by ID, matching name, or return custom/default persona."""
+    """Retrieve a student persona by ID, matching name, or return custom/random/default persona."""
     if persona_data:
         p_id = persona_id or persona_data.get("persona_id", "CUSTOM")
         return p_id, persona_data
 
     if persona_id:
         norm_id = persona_id.strip().upper()
+        if norm_id in ("RANDOM", "ANY"):
+            rand_id = random.choice(list(STUDENT_PERSONAS.keys()))
+            return rand_id, STUDENT_PERSONAS[rand_id]
+
         if norm_id in STUDENT_PERSONAS:
             return norm_id, STUDENT_PERSONAS[norm_id]
 
@@ -188,8 +211,18 @@ def get_student_persona(
             if norm_id in pid or norm_id in pdata.get("persona_name", "").upper():
                 return pid, pdata
 
+    if randomize:
+        rand_id = random.choice(list(STUDENT_PERSONAS.keys()))
+        return rand_id, STUDENT_PERSONAS[rand_id]
+
     default_id = "STU_001"
     return default_id, STUDENT_PERSONAS[default_id]
+
+
+def get_random_student_persona() -> Tuple[str, Dict[str, Any]]:
+    """Return a randomly chosen student persona."""
+    rand_id = random.choice(list(STUDENT_PERSONAS.keys()))
+    return rand_id, STUDENT_PERSONAS[rand_id]
 
 
 def format_behavioral_guidelines(guidelines: Union[List[str], str, None]) -> str:

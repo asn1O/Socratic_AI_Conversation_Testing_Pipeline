@@ -117,6 +117,18 @@ def main():
         default=str(PROJECT_ROOT / "logs" / "pipeline.log"),
         help="Path to log file (default: logs/pipeline.log). Pass 'none' to disable file logging.",
     )
+    parser.add_argument(
+        "--scenario-id",
+        type=str,
+        default="random",
+        help="Scenario ID from question_bank.json or 'random' (default: random).",
+    )
+    parser.add_argument(
+        "--persona-id",
+        type=str,
+        default="random",
+        help="Student persona ID (STU_001..STU_005) or 'random' (default: random).",
+    )
 
     args = parser.parse_args()
 
@@ -153,6 +165,8 @@ def main():
     print("Conversation Testing Pipeline Configuration")
     print(f"  Tutor Model   : {tutor.provider} - {tutor.model_name}")
     print(f"  Student Model : {student.provider} - {student.model_name}")
+    print(f"  Student Persona: {args.persona_id if args.persona_id != 'random' else 'random (sampled per conversation)'}")
+    print(f"  Scenario ID   : {args.scenario_id if args.scenario_id != 'random' else 'random (sampled per conversation)'}")
     print(f"  Sessions      : {args.iterations}")
     print(f"  Max Turns     : {args.max_iterations * 2} ({args.max_iterations} rounds)")
     print(f"  Data Output   : {args.data_dir}")
@@ -174,6 +188,8 @@ def main():
             require_closing=args.require_closing,
             mock=args.mock,
             log_file=args.log_file,
+            scenario_id=args.scenario_id,
+            persona_id=args.persona_id,
         )
         if success and save_path:
             successful += 1
