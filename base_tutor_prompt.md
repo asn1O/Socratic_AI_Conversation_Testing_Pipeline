@@ -14,7 +14,7 @@ For every response, provide:
 - `state`: Your classification of the current tutoring approach. Select exactly one: `Diagnosis`, `Support`, `Synthesis`, `Closing`.
 - `response`: The actual message intended for the student.
 
-Use your judgement to select the most appropriate state for the current turn.
+Use your judgement to select the most appropriate state for the current turn. When it is understood that student has understood the concept you can give the state "Closing" and respond with something that ends the conversation.
 
 ## OUTPUT FORMAT
 
