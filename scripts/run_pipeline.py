@@ -16,6 +16,10 @@ from src.pipeline import (
     load_models_from_file,
     run_single_conversation,
 )
+from src.prompt_generator import (
+    get_eval_combo,
+    load_eval_combos,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -138,6 +142,18 @@ def main():
         default="random",
         help="Student persona ID (STU_001..STU_005) or 'random' (default: random).",
     )
+    parser.add_argument(
+        "--eval-mode",
+        "-e",
+        action="store_true",
+        help="Enable evaluation mode: sequentially cycles through curated parameter combinations using modulo indexing for fair tutor model comparisons.",
+    )
+    parser.add_argument(
+        "--eval-combos-path",
+        type=str,
+        default=None,
+        help="Optional path to custom eval combos JSON file (defaults to eval_combos.json).",
+    )
 
     args = parser.parse_args()
 
@@ -187,13 +203,21 @@ def main():
         force=True,
     )
 
+    eval_combos = []
+    if args.eval_mode:
+        eval_combos = load_eval_combos(args.eval_combos_path)
+
     print("\n" + "=" * 60)
     print("Conversation Testing Pipeline Configuration")
     print(f"  Tutor Model   : {tutor.provider} - {tutor.model_name}")
     print(f"  Tutor Prompt  : {tutor_prompt_path.name} ({tutor_prompt_path})")
     print(f"  Student Model : {student.provider} - {student.model_name}")
-    print(f"  Student Persona: {args.persona_id if args.persona_id != 'random' else 'random (sampled per conversation)'}")
-    print(f"  Scenario ID   : {args.scenario_id if args.scenario_id != 'random' else 'random (sampled per conversation)'}")
+    if args.eval_mode:
+        print(f"  Mode          : EVAL MODE ({len(eval_combos)} sequential benchmark combos)")
+    else:
+        print(f"  Mode          : Standard Mode")
+        print(f"  Student Persona: {args.persona_id if args.persona_id != 'random' else 'random (sampled per conversation)'}")
+        print(f"  Scenario ID   : {args.scenario_id if args.scenario_id != 'random' else 'random (sampled per conversation)'}")
     print(f"  Sessions      : {args.iterations}")
     print(f"  Max Turns     : {args.max_iterations * 2} ({args.max_iterations} rounds)")
     print(f"  Data Output   : {args.data_dir}")
@@ -207,7 +231,29 @@ def main():
     saved_conversations = []
 
     for session_idx in range(args.iterations):
-        logger.info("Starting session %d/%d", session_idx + 1, args.iterations)
+        convo_idx_1based = session_idx + 1
+        if args.eval_mode:
+            combo = get_eval_combo(convo_idx_1based, one_indexed=True, combos=eval_combos)
+            combo_id = combo.get("combo_id", f"COMBO_{((convo_idx_1based - 1) % len(eval_combos)) + 1}")
+            combo_num = ((convo_idx_1based - 1) % len(eval_combos)) + 1
+            logger.info(
+                "Starting session %d/%d [EVAL MODE: Combo %d/%d (%s)] -> Scenario: %s, Persona: %s",
+                convo_idx_1based,
+                args.iterations,
+                combo_num,
+                len(eval_combos),
+                combo_id,
+                combo.get("scenario_id"),
+                combo.get("persona_id"),
+            )
+            print(
+                f"\n>>> [Session {convo_idx_1based}/{args.iterations}] [EVAL MODE] "
+                f"Combo {combo_num}/{len(eval_combos)} ({combo_id}): "
+                f"Scenario={combo.get('scenario_id')}, Persona={combo.get('persona_id')} <<<"
+            )
+        else:
+            logger.info("Starting session %d/%d", convo_idx_1based, args.iterations)
+
         success, save_path, record = run_single_conversation(
             tutor_model=tutor,
             student_model=student,
@@ -222,6 +268,10 @@ def main():
             scenario_id=args.scenario_id,
             persona_id=args.persona_id,
             tutor_prompt_path=tutor_prompt_path,
+            eval_mode=args.eval_mode,
+            eval_combo_index=convo_idx_1based,
+            eval_combos=eval_combos if args.eval_mode else None,
+            eval_combos_path=args.eval_combos_path,
         )
         if success and save_path:
             successful += 1
@@ -251,6 +301,7 @@ def main():
         f"  Tutor Model           : {tutor.provider} - {tutor.model_name}",
         f"  Student Model         : {student.provider} - {student.model_name}",
         f"  Tutor Prompt          : {tutor_prompt_path.name}",
+        f"  Mode                  : {'EVAL MODE' if args.eval_mode else 'Standard Mode'}",
         f"  Total Sessions        : {total}",
         f"  Successfully Stored   : {successful}",
         f"  Failed Sessions       : {failed}",

@@ -225,6 +225,145 @@ def get_random_student_persona() -> Tuple[str, Dict[str, Any]]:
     return rand_id, STUDENT_PERSONAS[rand_id]
 
 
+DEFAULT_EVAL_COMBOS: List[Dict[str, Any]] = [
+    {
+        "combo_id": "EVAL_01",
+        "scenario_id": "PHY_001",
+        "persona_id": "STU_002",
+        "domain": "Physics",
+        "subtopic": "Newton's Third Law",
+        "difficulty": "medium",
+        "description": "Newton's Third Law collision force with a Confident but Incorrect student (arguing truck hits car with more force).",
+    },
+    {
+        "combo_id": "EVAL_02",
+        "scenario_id": "MAT_001",
+        "persona_id": "STU_004",
+        "domain": "Mathematics",
+        "subtopic": "Quadratic Equations",
+        "difficulty": "easy",
+        "description": "Quadratic Equations (x^2=9) with a Procedural Learner (only took positive root 3 through memorized procedure).",
+    },
+    {
+        "combo_id": "EVAL_03",
+        "scenario_id": "CS_001",
+        "persona_id": "STU_005",
+        "domain": "Computer Science",
+        "subtopic": "Time Complexity and Nested Loops",
+        "difficulty": "medium",
+        "description": "Time complexity of nested loops with a Partially Knowledgeable Learner (assuming two loops always mean O(n^2)).",
+    },
+    {
+        "combo_id": "EVAL_04",
+        "scenario_id": "CHEM_003",
+        "persona_id": "STU_001",
+        "domain": "Chemistry",
+        "subtopic": "Acids, Bases and pH",
+        "difficulty": "easy",
+        "description": "Acid dilution and pH with a Confused Beginner (confusing total volume increase with acidity increase).",
+    },
+    {
+        "combo_id": "EVAL_05",
+        "scenario_id": "LOG_001",
+        "persona_id": "STU_003",
+        "domain": "Logical Reasoning",
+        "subtopic": "Conditional Statements and Logical Fallacies",
+        "difficulty": "medium",
+        "description": "Affirming the consequent with a Passive Learner (needs proactive guidance to recognize alternative causes for wet roads).",
+    },
+    {
+        "combo_id": "EVAL_06",
+        "scenario_id": "PHY_002",
+        "persona_id": "STU_001",
+        "domain": "Physics",
+        "subtopic": "Work and Energy",
+        "difficulty": "easy",
+        "description": "Mechanical work on horizontally carried bag with a Confused Beginner (struggles to separate physical tiredness from mechanical work W=Fd cos(theta)).",
+    },
+    {
+        "combo_id": "EVAL_07",
+        "scenario_id": "MAT_002",
+        "persona_id": "STU_002",
+        "domain": "Mathematics",
+        "subtopic": "Probability and Independent Events",
+        "difficulty": "medium",
+        "description": "Gambler's fallacy after 5 consecutive coin heads with a Confident but Incorrect student (insisting tails is due).",
+    },
+    {
+        "combo_id": "EVAL_08",
+        "scenario_id": "CS_002",
+        "persona_id": "STU_004",
+        "domain": "Computer Science",
+        "subtopic": "Operating Systems and Virtual Memory",
+        "difficulty": "hard",
+        "description": "Virtual memory addressing and page faults with a Procedural Learner (believes valid virtual address must always physically reside in RAM).",
+    },
+    {
+        "combo_id": "EVAL_09",
+        "scenario_id": "CHEM_001",
+        "persona_id": "STU_005",
+        "domain": "Chemistry",
+        "subtopic": "Periodic Trends: Atomic Radius",
+        "difficulty": "medium",
+        "description": "Periodic trend of atomic radius across a period with a Partially Knowledgeable Learner (overlooks effective nuclear charge and shielding).",
+    },
+    {
+        "combo_id": "EVAL_10",
+        "scenario_id": "LOG_002",
+        "persona_id": "STU_003",
+        "domain": "Logical Reasoning",
+        "subtopic": "Boolean Logic and De Morgan's Laws",
+        "difficulty": "medium",
+        "description": "Negation of compound condition (A AND B) with a Passive Learner (needs step-by-step Socratic questions to discover De Morgan's laws).",
+    },
+]
+
+
+def load_eval_combos(path: Optional[Union[str, Path]] = None) -> List[Dict[str, Any]]:
+    """
+    Load evaluation parameter combinations from a JSON file.
+    Falls back to DEFAULT_EVAL_COMBOS if file is not found or invalid.
+    """
+    primary = Path(path) if path else REPO_ROOT / "eval_combos.json"
+    if primary.is_file():
+        try:
+            with primary.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list) and len(data) > 0:
+                    return data
+        except Exception:
+            pass
+
+    return [dict(c) for c in DEFAULT_EVAL_COMBOS]
+
+
+def get_eval_combo(
+    index: int,
+    one_indexed: bool = True,
+    combos: Optional[List[Dict[str, Any]]] = None,
+    combos_path: Optional[Union[str, Path]] = None,
+) -> Dict[str, Any]:
+    """
+    Retrieve parameter combo sequentially using deterministic modulo indexing.
+
+    If one_indexed is True (e.g. conversation index i starts from 1):
+      idx = (index - 1) % len(combos)
+      (i.e. i=1 -> 1st combo, i=10 -> 10th combo, i=11 -> 1st combo, i=12 -> 2nd combo)
+    If one_indexed is False (0-indexed):
+      idx = index % len(combos)
+    """
+    pool = combos if combos is not None else load_eval_combos(combos_path)
+    if not pool:
+        raise ValueError("Eval combos list is empty.")
+
+    if one_indexed:
+        target_idx = (index - 1) % len(pool)
+    else:
+        target_idx = index % len(pool)
+
+    return pool[target_idx]
+
+
 def format_behavioral_guidelines(guidelines: Union[List[str], str, None]) -> str:
     """Format behavioural guidelines as markdown bullet points."""
     if not guidelines:
@@ -301,10 +440,8 @@ def format_conversation_history(
         turn = item.get("turn", "?")
         speaker = item.get("speaker", "unknown")
         if speaker == "tutor":
-            state = item.get("state", "")
             response = item.get("response", item.get("text", ""))
-            state_str = f" [{state}]" if state else ""
-            lines.append(f"Turn {turn} (Tutor{state_str}): {response}")
+            lines.append(f"Turn {turn} (Tutor): {response}")
         else:
             text = item.get("text", "")
             lines.append(f"Turn {turn} (Student): {text}")
@@ -614,7 +751,7 @@ def generate_tutor_prompt(
             "Return ONLY valid JSON:\n"
             "{\n"
             '  "reasoning": "Brief pedagogical rationale for the selected approach.",\n'
-            '  "state": "Diagnosis",\n'
+            '  "end": 0,\n'
             '  "response": "The actual message shown to the student."\n'
             "}\n\n"
             "# TUTOR CONTEXT\n\n"

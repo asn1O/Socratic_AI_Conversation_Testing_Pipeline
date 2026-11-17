@@ -110,12 +110,18 @@ def validate_tutor_turn(
     if not isinstance(reasoning, str) or not reasoning.strip():
         return False, None, "missing or empty 'reasoning' field"
 
-    state = payload.get("state")
-    if not isinstance(state, str) or state.strip().lower() not in VALID_TUTOR_STATES:
-        return False, None, f"invalid or missing 'state' field (got: {state})"
+    end_val = payload.get("end")
+    if end_val is None:
+        return False, None, "missing required field 'end' (must be 0 or 1)"
 
-    # Normalize state casing to Title Case (Diagnosis, Support, Synthesis, Closing)
-    normalized_state = state.strip().title()
+    if isinstance(end_val, bool):
+        normalized_end = 1 if end_val else 0
+    elif isinstance(end_val, int) and end_val in (0, 1):
+        normalized_end = end_val
+    elif isinstance(end_val, str) and end_val.strip() in ("0", "1"):
+        normalized_end = int(end_val.strip())
+    else:
+        return False, None, f"invalid 'end' field: must be 0 or 1 (got: {end_val})"
 
     response = payload.get("response") or payload.get("text")
     if not isinstance(response, str) or not response.strip():
@@ -128,7 +134,7 @@ def validate_tutor_turn(
 
     valid_payload = {
         "reasoning": reasoning.strip(),
-        "state": normalized_state,
+        "end": normalized_end,
         "response": response.strip(),
     }
     return True, valid_payload, ""
@@ -169,10 +175,9 @@ def is_valid_conversation_dataset(entry: dict) -> Tuple[bool, str, str]:
       1. Required fields: 'problem', 'conversation'
       2. Turn numbering: 1..N
       3. Speaker alternation: student -> tutor -> ...
-      4. Tutor states: Diagnosis, Support, Synthesis, Closing
-      5. Second-to-last tutor turn must be 'Synthesis'
-      6. Last tutor turn must be 'Closing'
-      7. No config leakage in reasoning
+      4. Tutor fields: reasoning, end (0 or 1), response
+      5. Last tutor turn must have end: 1
+      6. No config leakage in reasoning
 
     Returns:
         (is_valid, error_detail, error_category)
@@ -203,32 +208,32 @@ def is_valid_conversation_dataset(entry: dict) -> Tuple[bool, str, str]:
 
         if speaker == "tutor":
             tutor_turns.append((i, turn))
-            state = str(turn.get("state", "")).strip().lower()
-            if state not in VALID_TUTOR_STATES:
-                return False, f"turn {i+1} (tutor): invalid state '{turn.get('state')}'", "invalid tutor state value"
+            end_val = turn.get("end")
+            if end_val not in (0, 1, "0", "1", True, False):
+                return False, f"turn {i+1} (tutor): invalid or missing 'end' field '{end_val}'", "invalid tutor end value"
 
             reasoning = str(turn.get("reasoning", ""))
+            if not reasoning.strip():
+                return False, f"turn {i+1} (tutor): missing or empty 'reasoning'", "missing required field"
+
+            response = str(turn.get("response", turn.get("text", "")))
+            if not response.strip():
+                return False, f"turn {i+1} (tutor): missing or empty 'response'", "missing required field"
+
             leakage = check_config_leakage(reasoning)
             if leakage:
                 return False, f"turn {i+1} (tutor): config leakage detected ({leakage})", "config leakage"
 
-    if len(tutor_turns) < 2:
-        return False, "fewer than 2 tutor turns; cannot verify Synthesis->Closing", "too few tutor turns"
+    if len(tutor_turns) < 1:
+        return False, "no tutor turns found", "too few tutor turns"
 
     last_tutor_idx, last_tutor = tutor_turns[-1]
-    if str(last_tutor.get("state", "")).strip().lower() != "closing":
+    last_end = last_tutor.get("end")
+    if last_end not in (1, "1", True):
         return (
             False,
-            f"turn {last_tutor_idx+1}: last tutor turn must be 'Closing', got '{last_tutor.get('state')}'",
-            "last tutor turn not Closing",
-        )
-
-    second_last_idx, second_last_tutor = tutor_turns[-2]
-    if str(second_last_tutor.get("state", "")).strip().lower() != "synthesis":
-        return (
-            False,
-            f"turn {second_last_idx+1}: second-to-last tutor turn must be 'Synthesis', got '{second_last_tutor.get('state')}'",
-            "second-to-last tutor turn not Synthesis",
+            f"turn {last_tutor_idx+1}: last tutor turn must have 'end': 1, got '{last_end}'",
+            "last tutor turn not ended",
         )
 
     return True, "", ""

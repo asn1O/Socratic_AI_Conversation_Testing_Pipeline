@@ -47,13 +47,13 @@ For each conversation (up to `max_iterations`, default: 15 rounds / 30 turns):
      ```json
      {
        "reasoning": "<rationale for pedagogical decision>",
-       "state": "Diagnosis | Support | Synthesis | Closing",
+       "end": 0,
        "response": "<message shown to student>"
      }
      ```
-   - If the response is malformed, missing required fields, has an invalid state, or leaks prompt configurations in reasoning, the tutor model is automatically retried (up to `max_tutor_retries`, default: 5).
+   - If the response is malformed, missing required fields, has an invalid `end` value (must be `0` or `1`), or leaks prompt configurations in reasoning, the tutor model is automatically retried (up to `max_tutor_retries`, default: 5).
 3. **Closing Detection**:
-   - If the tutor's validated state is `"Closing"`, the loop concludes immediately.
+   - When the tutor sets `"end": 1`, the loop concludes immediately.
 
 ### 2. Conversation Storage & Format
 Valid conversations are stored under `data/{tutor_model_stem}/` in the format:
@@ -63,6 +63,25 @@ data/{provider}_{model_name}/{DATASET_GENERATOR_ID}-set[{set_index}].json
 - Each set file contains a JSON array with up to **15 conversations**.
 - When a file reaches 15 conversations, the pipeline automatically advances to the next set file (`set[1].json`, `set[2].json`, etc.).
 - Rejected conversations or malformed turns are recorded in `data/rejected_responses/` for debugging.
+
+---
+
+## Evaluation Mode (Fair Benchmarking Across Tutor Models)
+
+To compare different tutor models fairly, run with `--eval-mode` (or `-e`). Instead of sampling questions and student personas randomly, Evaluation Mode cycles through a deterministic list of curated parameter combinations (`eval_combos.json`) using sequential modulo indexing:
+
+$$\text{combo\_index} = (i - 1) \pmod L$$
+
+where $i \ge 1$ is the conversation session number and $L$ is the number of combos (10 by default).
+
+- Session 1 $\to$ Combo 1 (`EVAL_01`): Physics (`PHY_001`) + Confident but Incorrect (`STU_002`)
+- Session 2 $\to$ Combo 2 (`EVAL_02`): Math (`MAT_001`) + Procedural Learner (`STU_004`)
+- ...
+- Session 10 $\to$ Combo 10 (`EVAL_10`): Logic (`LOG_002`) + Passive Learner (`STU_003`)
+- Session 11 $\to$ Combo 1 (`EVAL_01`): wraps around to 1st combo
+- Session 12 $\to$ Combo 2 (`EVAL_02`): wraps around to 2nd combo
+
+This guarantees that each tutor model interacts with a student LLM using the **identical parameters, questions, and misconceptions in the exact same order**.
 
 ---
 
@@ -77,29 +96,24 @@ cp .env.example .env
 
 ### 2. Run Pipeline
 
-Run using model indices:
+Run evaluation mode for 10 benchmark conversations:
 ```bash
-# Run 1 conversation using tutor index 0 and student index 0
-python3 scripts/run_pipeline.py --tutor-index 0 --student-index 0 --iterations 1
-
-# Run with custom max rounds
-python3 scripts/run_pipeline.py --tutor-index 1 --student-index 0 --max-iterations 12 --iterations 3
+python3 scripts/run_pipeline.py --tutor-index 0 --student-index 0 --eval-mode --iterations 10
 ```
 
-Run using model name matching:
+Run with custom tutor prompt (e.g. `base_tutor_prompt.md`):
 ```bash
-python3 scripts/run_pipeline.py --tutor-model gemini-3.5-flash --student-model gemini-2.5-flash-lite
+python3 scripts/run_pipeline.py --tutor-prompt base_tutor_prompt.md --eval-mode --iterations 10
 ```
 
-Select tutor prompt template (defaults to `socratic_tutor_prompt_small.md` if omitted):
+Run standard mode with specific or random scenarios:
 ```bash
-# Pass custom tutor prompt template file
-python3 scripts/run_pipeline.py --tutor-prompt socratic_tutor_prompt.md
+python3 scripts/run_pipeline.py --tutor-index 0 --student-index 0 --scenario-id PHY_001 --persona-id STU_002
 ```
 
 Offline Mock Mode (test without consuming API credits):
 ```bash
-python3 scripts/run_pipeline.py --mock --iterations 2
+python3 scripts/run_pipeline.py --mock --eval-mode --iterations 12
 ```
 
 ### 3. Audit Dataset

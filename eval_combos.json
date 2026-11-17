@@ -1,0 +1,92 @@
+[
+  {
+    "combo_id": "EVAL_01",
+    "scenario_id": "PHY_001",
+    "persona_id": "STU_002",
+    "domain": "Physics",
+    "subtopic": "Newton's Third Law",
+    "difficulty": "medium",
+    "description": "Newton's Third Law collision force with a Confident but Incorrect student (arguing truck hits car with more force)."
+  },
+  {
+    "combo_id": "EVAL_02",
+    "scenario_id": "MAT_001",
+    "persona_id": "STU_004",
+    "domain": "Mathematics",
+    "subtopic": "Quadratic Equations",
+    "difficulty": "easy",
+    "description": "Quadratic Equations (x^2=9) with a Procedural Learner (only took positive root 3 through memorized procedure)."
+  },
+  {
+    "combo_id": "EVAL_03",
+    "scenario_id": "CS_001",
+    "persona_id": "STU_005",
+    "domain": "Computer Science",
+    "subtopic": "Time Complexity and Nested Loops",
+    "difficulty": "medium",
+    "description": "Time complexity of nested loops with a Partially Knowledgeable Learner (assuming two loops always mean O(n^2))."
+  },
+  {
+    "combo_id": "EVAL_04",
+    "scenario_id": "CHEM_003",
+    "persona_id": "STU_001",
+    "domain": "Chemistry",
+    "subtopic": "Acids, Bases and pH",
+    "difficulty": "easy",
+    "description": "Acid dilution and pH with a Confused Beginner (confusing total volume increase with acidity increase)."
+  },
+  {
+    "combo_id": "EVAL_05",
+    "scenario_id": "LOG_001",
+    "persona_id": "STU_003",
+    "domain": "Logical Reasoning",
+    "subtopic": "Conditional Statements and Logical Fallacies",
+    "difficulty": "medium",
+    "description": "Affirming the consequent with a Passive Learner (needs proactive guidance to recognize alternative causes for wet roads)."
+  },
+  {
+    "combo_id": "EVAL_06",
+    "scenario_id": "PHY_002",
+    "persona_id": "STU_001",
+    "domain": "Physics",
+    "subtopic": "Work and Energy",
+    "difficulty": "easy",
+    "description": "Mechanical work on horizontally carried bag with a Confused Beginner (struggles to separate physical tiredness from mechanical work W=Fd cos(theta))."
+  },
+  {
+    "combo_id": "EVAL_07",
+    "scenario_id": "MAT_002",
+    "persona_id": "STU_002",
+    "domain": "Mathematics",
+    "subtopic": "Probability and Independent Events",
+    "difficulty": "medium",
+    "description": "Gambler's fallacy after 5 consecutive coin heads with a Confident but Incorrect student (insisting tails is due)."
+  },
+  {
+    "combo_id": "EVAL_08",
+    "scenario_id": "CS_002",
+    "persona_id": "STU_004",
+    "domain": "Computer Science",
+    "subtopic": "Operating Systems and Virtual Memory",
+    "difficulty": "hard",
+    "description": "Virtual memory addressing and page faults with a Procedural Learner (believes valid virtual address must always physically reside in RAM)."
+  },
+  {
+    "combo_id": "EVAL_09",
+    "scenario_id": "CHEM_001",
+    "persona_id": "STU_005",
+    "domain": "Chemistry",
+    "subtopic": "Periodic Trends: Atomic Radius",
+    "difficulty": "medium",
+    "description": "Periodic trend of atomic radius across a period with a Partially Knowledgeable Learner (overlooks effective nuclear charge and shielding)."
+  },
+  {
+    "combo_id": "EVAL_10",
+    "scenario_id": "LOG_002",
+    "persona_id": "STU_003",
+    "domain": "Logical Reasoning",
+    "subtopic": "Boolean Logic and De Morgan's Laws",
+    "difficulty": "medium",
+    "description": "Negation of compound condition (A AND B) with a Passive Learner (needs step-by-step Socratic questions to discover De Morgan's laws)."
+  }
+]

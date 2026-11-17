@@ -16,11 +16,11 @@ def test_format_conversation_history_empty():
 def test_format_conversation_history_turns():
     history = [
         {"turn": 1, "speaker": "student", "text": "Hello, I need help."},
-        {"turn": 2, "speaker": "tutor", "state": "Diagnosis", "response": "Sure, what is confusing?"},
+        {"turn": 2, "speaker": "tutor", "end": 0, "response": "Sure, what is confusing?"},
     ]
     text = format_conversation_history(history)
     assert "Turn 1 (Student): Hello, I need help." in text
-    assert "Turn 2 (Tutor [Diagnosis]): Sure, what is confusing?" in text
+    assert "Turn 2 (Tutor): Sure, what is confusing?" in text
 
 
 def test_inject_variables():
@@ -88,8 +88,8 @@ def test_question_bank_scenarios():
     prompt_mat = generate_student_prompt(persona_id="STU_002", scenario_id="MAT_001")
     assert "persona_id: STU_002" in prompt_mat
     assert "scenario_id: MAT_001" in prompt_mat
-    assert "Algebra and Quadratic Equations" in prompt_mat
-    assert "A student solves x² = 9" in prompt_mat
+    assert "Quadratic Equations" in prompt_mat
+    assert "A student solves x^2 = 9" in prompt_mat
 
 
 def test_student_prompt_generator_class():
@@ -127,16 +127,16 @@ def test_generate_tutor_prompt_with_history():
 
     history_list = [
         {"turn": 1, "speaker": "student", "text": "Is work zero?"},
-        {"turn": 2, "speaker": "tutor", "state": "Diagnosis", "response": "Why do you think so?"},
+        {"turn": 2, "speaker": "tutor", "end": 0, "response": "Why do you think so?"},
     ]
     prompt_list = generate_tutor_prompt(conversation_history=history_list)
     assert "Turn 1 (Student): Is work zero?" in prompt_list
-    assert "Turn 2 (Tutor [Diagnosis]): Why do you think so?" in prompt_list
+    assert "Turn 2 (Tutor): Why do you think so?" in prompt_list
 
 
 def test_generate_tutor_prompt_scenario_id():
     prompt = generate_tutor_prompt(scenario_id="MAT_001")
-    assert "A student solves x² = 9" in prompt
+    assert "A student solves x^2 = 9" in prompt
 
     prompt_custom = generate_tutor_prompt(problem="Solve 3x + 5 = 20")
     assert "Solve 3x + 5 = 20" in prompt_custom
@@ -146,8 +146,8 @@ def test_tutor_prompt_generator_class():
     from src.prompt_generator import TutorPromptGenerator
 
     gen = TutorPromptGenerator()
-    prompt = gen.generate_tutor_prompt(scenario_id="BIO_001")
-    assert "red blood cell" in prompt
+    prompt = gen.generate_tutor_prompt(scenario_id="PHY_001")
+    assert "truck" in prompt.lower()
     assert "{{" not in prompt
 
     prompt2 = gen.generate_prompt(

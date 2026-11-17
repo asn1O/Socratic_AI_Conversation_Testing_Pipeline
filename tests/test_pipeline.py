@@ -76,7 +76,7 @@ def test_run_single_conversation_mock(tmp_path):
     assert convo[0]["speaker"] == "student"
     assert convo[1]["speaker"] == "tutor"
     assert convo[-1]["speaker"] == "tutor"
-    assert convo[-1]["state"] == "Closing"
+    assert convo[-1]["end"] == 1
     assert item["config"]["closed"] is True
 
     # Verify persona and question bank details are recorded in parameters
@@ -274,7 +274,7 @@ def test_run_single_conversation_student_retry_success(tmp_path, monkeypatch):
         tutor_calls += 1
         return True, json.dumps({
             "reasoning": "The student gave 10 cents.",
-            "state": "Closing",
+            "end": 1,
             "response": "Good job!",
         }), 20, None
 
@@ -505,7 +505,7 @@ def test_run_pipeline_cli_failure_summary():
     assert "Failed Sessions       : 2" in result.stdout
     assert "Success Rate          : 0.0%" in result.stdout
     assert "Failure Breakdown     :" in result.stdout
-    assert "did not reach Closing state" in result.stdout
+    assert "did not reach end: 1" in result.stdout
 
 
 

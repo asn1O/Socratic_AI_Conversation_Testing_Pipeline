@@ -12,10 +12,12 @@ from .model import Model
 from .prompt_generator import (
     generate_student_prompt,
     generate_tutor_prompt,
+    get_eval_combo,
     get_question_scenario,
     get_random_question_scenario,
     get_random_student_persona,
     get_student_persona,
+    load_eval_combos,
 )
 from .validator import validate_student_turn, validate_tutor_turn
 
@@ -78,6 +80,10 @@ def run_single_conversation(
     scenario_id: Optional[str] = None,
     persona_id: Optional[str] = None,
     tutor_prompt_path: Optional[Union[str, Path]] = None,
+    eval_mode: bool = False,
+    eval_combo_index: Optional[int] = None,
+    eval_combos: Optional[List[Dict[str, Any]]] = None,
+    eval_combos_path: Optional[Union[str, Path]] = None,
 ) -> Tuple[bool, Optional[Path], Dict[str, Any]]:
     """
     Run a multi-turn conversation between a student model and a tutor model.
@@ -86,7 +92,7 @@ def run_single_conversation(
       For round 0 .. max_iterations-1:
         1. Student prompt generated -> Student model called (up to max_student_retries) -> validate response.
         2. Tutor prompt generated -> Tutor model called (up to max_tutor_retries) -> validate tutor JSON.
-        3. If tutor state == "Closing", break immediately.
+        3. If tutor end == 1, break immediately.
       Save valid conversation to data/{tutor_stem}/{generator_id}-set[n].json.
     """
     if log_file and str(log_file).strip().lower() == "auto":
@@ -112,8 +118,30 @@ def run_single_conversation(
 
     active_parameters = dict(parameters or {})
 
+    # In eval mode, resolve parameters sequentially from eval combos
+    eval_combo_data = None
+    if eval_mode:
+        eval_idx = eval_combo_index if eval_combo_index is not None else 1
+        eval_combo_data = get_eval_combo(
+            eval_idx,
+            one_indexed=True,
+            combos=eval_combos,
+            combos_path=eval_combos_path,
+        )
+        selected_scenario_id = eval_combo_data.get("scenario_id")
+        selected_persona_id = eval_combo_data.get("persona_id")
+        active_parameters["eval_mode"] = True
+        active_parameters["eval_combo_id"] = eval_combo_data.get("combo_id")
+        active_parameters["eval_combo_index"] = eval_idx
+    else:
+        selected_scenario_id = scenario_id or active_parameters.get("scenario_id")
+        selected_persona_id = (
+            persona_id
+            or active_parameters.get("persona_id")
+            or active_parameters.get("persona")
+        )
+
     # 1. Resolve Scenario from Question Bank (random by default if not specified)
-    selected_scenario_id = scenario_id or active_parameters.get("scenario_id")
     if not selected_scenario_id or str(selected_scenario_id).strip().lower() in ("random", "any"):
         scenario_data = get_random_question_scenario()
     else:
@@ -157,11 +185,6 @@ def run_single_conversation(
     resolved_scenario_id = scenario_data.get("scenario_id", "CUSTOM")
 
     # 2. Resolve Student Persona (random by default if not specified)
-    selected_persona_id = (
-        persona_id
-        or active_parameters.get("persona_id")
-        or active_parameters.get("persona")
-    )
     if not selected_persona_id or str(selected_persona_id).strip().lower() in ("random", "any"):
         resolved_persona_id, persona_dict = get_random_student_persona()
     else:
@@ -346,19 +369,19 @@ def run_single_conversation(
                 if i == 0:
                     raw_tutor_reply = json.dumps({
                         "reasoning": "Student made the common intuitive mistake of subtracting 1 from 1.10. Needs guidance to check total cost.",
-                        "state": "Support",
+                        "end": 0,
                         "response": "Let's check that. If the ball is 10 cents, and the bat costs $1.00 more than the ball, how much would the bat cost?",
                     })
                 elif i == 1:
                     raw_tutor_reply = json.dumps({
                         "reasoning": "Student self-corrected and found 5 cents. Now prompt them to articulate the general rule.",
-                        "state": "Synthesis",
+                        "end": 0,
                         "response": "Spot on! In general, if you have two items where one costs $D more than the other and the total is $T, what is the general formula to find the smaller item's cost?",
                     })
                 else:
                     raw_tutor_reply = json.dumps({
                         "reasoning": "Student formulated the general rule correctly.",
-                        "state": "Closing",
+                        "end": 1,
                         "response": "Excellent deduction! You've mastered this concept completely. Ready for the next challenge?",
                     })
                 tutor_tokens = 50
@@ -385,11 +408,11 @@ def run_single_conversation(
                 tutor_turn_valid = True
                 tutor_payload = parsed
                 logger.info(
-                    "Tutor model [%s (%s)] call SUCCESS on turn %d (state: %s, %d tokens):\nReasoning: %s\nResponse: \"%s\"",
+                    "Tutor model [%s (%s)] call SUCCESS on turn %d (end: %s, %d tokens):\nReasoning: %s\nResponse: \"%s\"",
                     tutor_model.model_name,
                     tutor_model.provider,
                     turn_tutor,
-                    parsed["state"],
+                    parsed["end"],
                     tutor_tokens or 0,
                     parsed.get("reasoning", ""),
                     parsed.get("response", ""),
@@ -424,33 +447,33 @@ def run_single_conversation(
             )
             return False, None, {"error": f"tutor failed validation on turn {turn_tutor}: {last_tutor_err}"}
 
-        state = tutor_payload["state"]
+        end_signal = tutor_payload["end"]
         conversation.append({
             "turn": turn_tutor,
             "speaker": "tutor",
             "reasoning": tutor_payload["reasoning"],
-            "state": state,
+            "end": end_signal,
             "response": tutor_payload["response"],
         })
-        logger.info("Tutor turn %d recorded (state: %s)", turn_tutor, state)
+        logger.info("Tutor turn %d recorded (end: %s)", turn_tutor, end_signal)
 
         # -------------------------------------------------------------
-        # 3. Check for Closing state
+        # 3. Check for completion (end == 1)
         # -------------------------------------------------------------
-        if state.lower() == "closing":
+        if end_signal == 1:
             closed = True
-            logger.info("Conversation concluded naturally with 'Closing' state at round %d", rounds_completed)
+            logger.info("Conversation concluded naturally with 'end': 1 at round %d", rounds_completed)
             break
 
     if require_closing and not closed:
-        logger.warning("Conversation did not reach 'Closing' state within %d iterations; rejecting.", max_iterations)
+        logger.warning("Conversation did not reach 'end': 1 within %d iterations; rejecting.", max_iterations)
         tutor_model.write_rejected_response(
             conversation,
             data_dir=data_dir,
             generator_id=generator_id,
-            reason="Did not reach Closing state within max_iterations",
+            reason="Did not reach end: 1 within max_iterations",
         )
-        return False, None, {"error": "did not reach Closing state"}
+        return False, None, {"error": "did not reach end: 1"}
 
     # -----------------------------------------------------------------
     # Log the complete conversation transcript with spacing
@@ -476,9 +499,9 @@ def run_single_conversation(
             transcript_lines.append(f"  {turn_item.get('text', '')}")
             transcript_lines.append("")
         else:
-            state_val = turn_item.get("state", "")
-            state_label = f" ({state_val})" if state_val else ""
-            transcript_lines.append(f"Turn {turn_num} [TUTOR{state_label} - {tutor_model.model_name}]:")
+            end_val = turn_item.get("end", 0)
+            end_label = f" (end={end_val})"
+            transcript_lines.append(f"Turn {turn_num} [TUTOR{end_label} - {tutor_model.model_name}]:")
             if turn_item.get("reasoning"):
                 transcript_lines.append(f"  Reasoning: {turn_item.get('reasoning')}")
             transcript_lines.append(f"  Response : {turn_item.get('response', turn_item.get('text', ''))}")
@@ -491,18 +514,24 @@ def run_single_conversation(
     # -----------------------------------------------------------------
     # Save conversation to data folder
     # -----------------------------------------------------------------
+    config_dict = {
+        "tutor_model": tutor_model.model_name,
+        "tutor_provider": tutor_model.provider,
+        "tutor_prompt": resolved_tutor_prompt_path.name,
+        "student_model": student_model.model_name,
+        "student_provider": student_model.provider,
+        "max_iterations": max_iterations,
+        "completed_rounds": rounds_completed,
+        "closed": closed,
+        "eval_mode": eval_mode,
+        "parameters": active_parameters,
+    }
+    if eval_mode and eval_combo_data:
+        config_dict["eval_combo_id"] = eval_combo_data.get("combo_id")
+        config_dict["eval_combo_index"] = eval_combo_index
+
     record = {
-        "config": {
-            "tutor_model": tutor_model.model_name,
-            "tutor_provider": tutor_model.provider,
-            "tutor_prompt": resolved_tutor_prompt_path.name,
-            "student_model": student_model.model_name,
-            "student_provider": student_model.provider,
-            "max_iterations": max_iterations,
-            "completed_rounds": rounds_completed,
-            "closed": closed,
-            "parameters": active_parameters,
-        },
+        "config": config_dict,
         "scenario_id": resolved_scenario_id,
         "domain": domain_text,
         "topic": topic_text,
