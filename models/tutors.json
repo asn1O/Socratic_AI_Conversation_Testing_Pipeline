@@ -48,10 +48,10 @@
     "consecutive_failures": 0
   },
   {
-    "provider": "Kaggle",
+    "provider": "base",
     "api_key": "KAGGLE_SERVER",
     "model_name": "qwen",
-    "url": "https://easily-answered-scotland-arcade.trycloudflare.com/v1",
+    "url": "https://syracuse-dublin-lots-statement.trycloudflare.com/v1",
     "wait_1_min": false,
     "last_use": null,
     "expired": false,

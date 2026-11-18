@@ -22,5 +22,17 @@
     "no_of_replies": 0,
     "avg_tokens_used": 0.0,
     "consecutive_failures": 0
+  },
+  {
+    "provider": "NVIDIA",
+    "api_key": "NVIDIA_API_KEY",
+    "model_name": "nvidia/nemotron-3-ultra-550b-a55b",
+    "url": "https://integrate.api.nvidia.com/v1",
+    "wait_1_min": false,
+    "last_use": null,
+    "expired": false,
+    "no_of_replies": 0,
+    "avg_tokens_used": 0.0,
+    "consecutive_failures": 0
   }
 ]
