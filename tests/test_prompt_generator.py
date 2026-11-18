@@ -179,3 +179,122 @@ def test_generate_tutor_prompt_missing_file():
     import pytest
     with pytest.raises(FileNotFoundError, match="Tutor prompt template not found"):
         generate_tutor_prompt(template_path="non_existent_prompt_template_9999.md")
+
+
+def test_build_finetuned_tutor_messages_empty():
+    from src.prompt_generator import (
+        FINETUNED_SOCRATIC_SYSTEM_PROMPT,
+        build_finetuned_tutor_messages,
+    )
+
+    messages = build_finetuned_tutor_messages(problem="What is 15 * 4?")
+    assert len(messages) == 2
+    assert messages[0]["role"] == "system"
+    assert messages[0]["content"] == FINETUNED_SOCRATIC_SYSTEM_PROMPT
+    assert messages[1]["role"] == "user"
+    assert messages[1]["content"] == "What is 15 * 4?"
+
+
+def test_build_finetuned_tutor_messages_multiturn_preserves_xml():
+    from src.prompt_generator import (
+        FINETUNED_SOCRATIC_SYSTEM_PROMPT,
+        build_finetuned_tutor_messages,
+    )
+
+    raw_xml_t1 = (
+        "<reasoning>Student made an arithmetic error.</reasoning>\n"
+        "<state>Diagnosis</state>\n"
+        "<response>Can you double check your addition?</response>"
+    )
+
+    conversation = [
+        {"turn": 1, "speaker": "student", "text": "I think the answer is 10."},
+        {
+            "turn": 2,
+            "speaker": "tutor",
+            "reasoning": "Student made an arithmetic error.",
+            "state": "Diagnosis",
+            "end": 0,
+            "response": "Can you double check your addition?",
+            "raw_output": raw_xml_t1,
+        },
+        {"turn": 3, "speaker": "student", "text": "Oh, 5 + 6 is 11!"},
+    ]
+
+    messages = build_finetuned_tutor_messages(conversation_history=conversation)
+    assert len(messages) == 4
+    assert messages[0]["role"] == "system"
+    assert messages[0]["content"] == FINETUNED_SOCRATIC_SYSTEM_PROMPT
+
+    assert messages[1]["role"] == "user"
+    assert messages[1]["content"] == "I think the answer is 10."
+
+    # Verify full raw XML is preserved for tutor assistant history
+    assert messages[2]["role"] == "assistant"
+    assert messages[2]["content"] == raw_xml_t1
+    assert "<reasoning>" in messages[2]["content"]
+    assert "<state>Diagnosis</state>" in messages[2]["content"]
+    assert "<response>" in messages[2]["content"]
+
+    assert messages[3]["role"] == "user"
+    assert messages[3]["content"] == "Oh, 5 + 6 is 11!"
+
+
+def test_separation_of_tutor_vs_student_history():
+    """Verify tutor assistant history has full raw XML while student prompt receives ONLY clean response text."""
+    from src.prompt_generator import (
+        build_finetuned_tutor_messages,
+        generate_student_prompt,
+    )
+
+    raw_xml = (
+        "<reasoning>Student has misconception about gravity.</reasoning>\n"
+        "<state>Support</state>\n"
+        "<response>What causes the object to accelerate downward?</response>"
+    )
+
+    conversation = [
+        {"turn": 1, "speaker": "student", "text": "Heavier objects fall faster."},
+        {
+            "turn": 2,
+            "speaker": "tutor",
+            "reasoning": "Student has misconception about gravity.",
+            "state": "Support",
+            "end": 0,
+            "response": "What causes the object to accelerate downward?",
+            "raw_output": raw_xml,
+        },
+    ]
+
+    # 1. Tutor messages contain full raw XML
+    tutor_messages = build_finetuned_tutor_messages(conversation_history=conversation)
+    assert tutor_messages[2]["role"] == "assistant"
+    assert tutor_messages[2]["content"] == raw_xml
+    assert "<reasoning>" in tutor_messages[2]["content"]
+    assert "<state>Support</state>" in tutor_messages[2]["content"]
+
+    # 2. Student prompt receives ONLY clean response text
+    student_prompt = generate_student_prompt(conversation_history=conversation)
+    assert "What causes the object to accelerate downward?" in student_prompt
+    assert "<reasoning>" not in student_prompt
+    assert "<state>" not in student_prompt
+    assert "<response>" not in student_prompt
+    assert "Student has misconception about gravity" not in student_prompt
+
+
+def test_tutor_prompt_generator_class_finetuned():
+    from src.prompt_generator import TutorPromptGenerator
+
+    gen = TutorPromptGenerator()
+    conversation = [
+        {"turn": 1, "speaker": "student", "text": "Hello, need help with calculus."}
+    ]
+    messages = gen.generate_finetuned_messages(
+        conversation_history=conversation,
+        problem="Find derivative of x^2",
+    )
+    assert len(messages) == 2
+    assert messages[0]["role"] == "system"
+    assert "You are a Socratic tutor." in messages[0]["content"]
+    assert messages[1]["role"] == "user"
+    assert messages[1]["content"] == "Hello, need help with calculus."

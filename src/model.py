@@ -4,7 +4,7 @@ import json
 import os
 from pathlib import Path
 import re
-from typing import Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
 from openai import (
@@ -33,6 +33,16 @@ class Model:
     avg_tokens_used: float = 0.0
     api_key_env: Optional[str] = None
     consecutive_failures: int = 0
+    tutor_type: Optional[str] = None
+    prompt_format: Optional[str] = None
+
+    @property
+    def is_finetuned_socratic(self) -> bool:
+        """Check if model is configured as a fine-tuned Socratic tutor."""
+        return (
+            getattr(self, "tutor_type", None) == "finetuned_socratic"
+            or getattr(self, "prompt_format", None) == "sft_xml"
+        )
 
     def mark_expired(self, now: Optional[datetime] = None) -> None:
         """Mark the model as unusable."""
@@ -81,6 +91,8 @@ class Model:
             avg_tokens_used=float(d.get("avg_tokens_used", 0.0) or 0.0),
             api_key_env=api_key_env,
             consecutive_failures=int(d.get("consecutive_failures", 0)),
+            tutor_type=d.get("tutor_type"),
+            prompt_format=d.get("prompt_format"),
         )
 
     def record_response(self, total_tokens: Optional[int] = None) -> None:
@@ -191,11 +203,11 @@ class Model:
 
     def call_model(
         self,
-        prompt: str,
+        prompt: Union[str, List[Dict[str, str]]],
         timeout: int = REQUEST_TIMEOUT_SECONDS,
     ) -> Tuple[bool, Optional[str], int, Optional[str]]:
         """
-        Send a prompt to the model and return:
+        Send a prompt or multi-turn messages array to the model and return:
             (success, reply, total_tokens, error_code)
         """
         try:
@@ -211,10 +223,15 @@ class Model:
                 timeout=timeout,
             )
 
+            if isinstance(prompt, list):
+                messages = prompt
+            else:
+                messages = [{"role": "user", "content": str(prompt)}]
+
             self.last_use = datetime.now(timezone.utc)
             response = client.chat.completions.create(
                 model=self.model_name,
-                messages=[{"role": "user", "content": prompt}],
+                messages=messages,
             )
 
             reply = response.choices[0].message.content if response.choices else None

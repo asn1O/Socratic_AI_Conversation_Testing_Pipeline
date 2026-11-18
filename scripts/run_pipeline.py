@@ -79,6 +79,12 @@ def main():
         help="Optional name substring to select student model instead of index.",
     )
     parser.add_argument(
+        "--tutor-type",
+        type=str,
+        default=None,
+        help="Optional tutor type override (e.g., 'finetuned_socratic' or 'base'). Defaults to model configuration in tutors.json.",
+    )
+    parser.add_argument(
         "--iterations",
         type=int,
         default=1,
@@ -272,6 +278,7 @@ def main():
             eval_combo_index=convo_idx_1based,
             eval_combos=eval_combos if args.eval_mode else None,
             eval_combos_path=args.eval_combos_path,
+            tutor_type=args.tutor_type,
         )
         if success and save_path:
             successful += 1

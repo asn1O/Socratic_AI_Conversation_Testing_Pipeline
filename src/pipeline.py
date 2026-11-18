@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 
 from .model import Model
 from .prompt_generator import (
+    build_finetuned_tutor_messages,
     generate_student_prompt,
     generate_tutor_prompt,
     get_eval_combo,
@@ -19,7 +20,11 @@ from .prompt_generator import (
     get_student_persona,
     load_eval_combos,
 )
-from .validator import validate_student_turn, validate_tutor_turn
+from .validator import (
+    validate_finetuned_tutor_turn,
+    validate_student_turn,
+    validate_tutor_turn,
+)
 
 logger = logging.getLogger("conversation_pipeline")
 logger.setLevel(logging.INFO)
@@ -48,8 +53,17 @@ def get_model_by_index_or_name(models: List[Model], index: Optional[int] = None,
 
     if name:
         target = name.strip().lower()
+        # 1. Exact match on response_file_stem or model_name
+        for m in models:
+            if target == m.response_file_stem.lower() or target == m.model_name.lower():
+                return m
+        # 2. Substring in model_name (preserves existing priority)
         for m in models:
             if target in m.model_name.lower():
+                return m
+        # 3. Substring in provider or response_file_stem
+        for m in models:
+            if target in m.provider.lower() or target in m.response_file_stem.lower():
                 return m
         raise ValueError(f"No model found matching name '{name}'")
 
@@ -84,6 +98,7 @@ def run_single_conversation(
     eval_combo_index: Optional[int] = None,
     eval_combos: Optional[List[Dict[str, Any]]] = None,
     eval_combos_path: Optional[Union[str, Path]] = None,
+    tutor_type: Optional[str] = None,
 ) -> Tuple[bool, Optional[Path], Dict[str, Any]]:
     """
     Run a multi-turn conversation between a student model and a tutor model.
@@ -210,11 +225,23 @@ def run_single_conversation(
     else:
         resolved_tutor_prompt_path = repo_root / "socratic_tutor_prompt_small.md"
 
+    is_finetuned = (
+        tutor_type == "finetuned_socratic"
+        or getattr(tutor_model, "is_finetuned_socratic", False)
+    )
+
+    tutor_prompt_label = (
+        "finetuned_socratic_xml"
+        if is_finetuned
+        else resolved_tutor_prompt_path.name
+    )
+
     logger.info(
-        "Starting conversation test: Tutor=%s (%s), TutorPrompt=%s, Student=%s (%s, Persona=%s/%s, Scenario=%s)",
+        "Starting conversation test: Tutor=%s (%s, Type=%s), TutorPrompt=%s, Student=%s (%s, Persona=%s/%s, Scenario=%s)",
         tutor_model.model_name,
         tutor_model.provider,
-        resolved_tutor_prompt_path.name,
+        "finetuned_socratic" if is_finetuned else "base",
+        tutor_prompt_label,
         student_model.model_name,
         student_model.provider,
         resolved_persona_id,
@@ -351,39 +378,65 @@ def run_single_conversation(
                 max_tutor_retries,
             )
 
-            tutor_prompt = generate_tutor_prompt(
-                conversation_history=conversation,
-                scenario_id=resolved_scenario_id,
-                template_path=resolved_tutor_prompt_path,
-                parameters=active_parameters,
-                definitions=definitions,
-                problem=problem_text,
-                topic=topic_text,
-                domain=domain_text,
-                difficulty=difficulty_text,
-                learning_objective=learning_obj,
-                target_misconception=target_miscon,
-            )
+            if is_finetuned:
+                tutor_prompt = build_finetuned_tutor_messages(
+                    conversation_history=conversation,
+                    problem=problem_text,
+                )
+            else:
+                tutor_prompt = generate_tutor_prompt(
+                    conversation_history=conversation,
+                    scenario_id=resolved_scenario_id,
+                    template_path=resolved_tutor_prompt_path,
+                    parameters=active_parameters,
+                    definitions=definitions,
+                    problem=problem_text,
+                    topic=topic_text,
+                    domain=domain_text,
+                    difficulty=difficulty_text,
+                    learning_objective=learning_obj,
+                    target_misconception=target_miscon,
+                )
 
             if mock:
-                if i == 0:
-                    raw_tutor_reply = json.dumps({
-                        "reasoning": "Student made the common intuitive mistake of subtracting 1 from 1.10. Needs guidance to check total cost.",
-                        "end": 0,
-                        "response": "Let's check that. If the ball is 10 cents, and the bat costs $1.00 more than the ball, how much would the bat cost?",
-                    })
-                elif i == 1:
-                    raw_tutor_reply = json.dumps({
-                        "reasoning": "Student self-corrected and found 5 cents. Now prompt them to articulate the general rule.",
-                        "end": 0,
-                        "response": "Spot on! In general, if you have two items where one costs $D more than the other and the total is $T, what is the general formula to find the smaller item's cost?",
-                    })
+                if is_finetuned:
+                    if i == 0:
+                        raw_tutor_reply = (
+                            "<reasoning>Student made the common intuitive mistake of subtracting 1 from 1.10. Needs guidance to check total cost.</reasoning>\n"
+                            "<state>Diagnosis</state>\n"
+                            "<response>Let's check that. If the ball is 10 cents, and the bat costs $1.00 more than the ball, how much would the bat cost?</response>"
+                        )
+                    elif i == 1:
+                        raw_tutor_reply = (
+                            "<reasoning>Student self-corrected and found 5 cents. Now prompt them to articulate the general rule.</reasoning>\n"
+                            "<state>Support</state>\n"
+                            "<response>Spot on! In general, if you have two items where one costs $D more than the other and the total is $T, what is the general formula to find the smaller item's cost?</response>"
+                        )
+                    else:
+                        raw_tutor_reply = (
+                            "<reasoning>Student formulated the general rule correctly.</reasoning>\n"
+                            "<state>Closing</state>\n"
+                            "<response>Excellent deduction! You've mastered this concept completely. Ready for the next challenge?</response>"
+                        )
                 else:
-                    raw_tutor_reply = json.dumps({
-                        "reasoning": "Student formulated the general rule correctly.",
-                        "end": 1,
-                        "response": "Excellent deduction! You've mastered this concept completely. Ready for the next challenge?",
-                    })
+                    if i == 0:
+                        raw_tutor_reply = json.dumps({
+                            "reasoning": "Student made the common intuitive mistake of subtracting 1 from 1.10. Needs guidance to check total cost.",
+                            "end": 0,
+                            "response": "Let's check that. If the ball is 10 cents, and the bat costs $1.00 more than the ball, how much would the bat cost?",
+                        })
+                    elif i == 1:
+                        raw_tutor_reply = json.dumps({
+                            "reasoning": "Student self-corrected and found 5 cents. Now prompt them to articulate the general rule.",
+                            "end": 0,
+                            "response": "Spot on! In general, if you have two items where one costs $D more than the other and the total is $T, what is the general formula to find the smaller item's cost?",
+                        })
+                    else:
+                        raw_tutor_reply = json.dumps({
+                            "reasoning": "Student formulated the general rule correctly.",
+                            "end": 1,
+                            "response": "Excellent deduction! You've mastered this concept completely. Ready for the next challenge?",
+                        })
                 tutor_tokens = 50
                 success = True
                 err = None
@@ -403,16 +456,22 @@ def run_single_conversation(
                 )
                 continue
 
-            is_valid, parsed, val_err = validate_tutor_turn(raw_tutor_reply, active_parameters)
+            if is_finetuned:
+                is_valid, parsed, val_err = validate_finetuned_tutor_turn(raw_tutor_reply, active_parameters)
+            else:
+                is_valid, parsed, val_err = validate_tutor_turn(raw_tutor_reply, active_parameters)
+
             if is_valid and parsed:
                 tutor_turn_valid = True
                 tutor_payload = parsed
+                state_str = f", state: {parsed['state']}" if "state" in parsed else ""
                 logger.info(
-                    "Tutor model [%s (%s)] call SUCCESS on turn %d (end: %s, %d tokens):\nReasoning: %s\nResponse: \"%s\"",
+                    "Tutor model [%s (%s)] call SUCCESS on turn %d (end: %s%s, %d tokens):\nReasoning: %s\nResponse: \"%s\"",
                     tutor_model.model_name,
                     tutor_model.provider,
                     turn_tutor,
                     parsed["end"],
+                    state_str,
                     tutor_tokens or 0,
                     parsed.get("reasoning", ""),
                     parsed.get("response", ""),
@@ -448,14 +507,21 @@ def run_single_conversation(
             return False, None, {"error": f"tutor failed validation on turn {turn_tutor}: {last_tutor_err}"}
 
         end_signal = tutor_payload["end"]
-        conversation.append({
+        tutor_entry: Dict[str, Any] = {
             "turn": turn_tutor,
             "speaker": "tutor",
             "reasoning": tutor_payload["reasoning"],
             "end": end_signal,
             "response": tutor_payload["response"],
-        })
-        logger.info("Tutor turn %d recorded (end: %s)", turn_tutor, end_signal)
+        }
+        if "state" in tutor_payload:
+            tutor_entry["state"] = tutor_payload["state"]
+        if "raw_output" in tutor_payload:
+            tutor_entry["raw_output"] = tutor_payload["raw_output"]
+
+        conversation.append(tutor_entry)
+        state_log = f", state: {tutor_payload.get('state')}" if "state" in tutor_payload else ""
+        logger.info("Tutor turn %d recorded (end: %s%s)", turn_tutor, end_signal, state_log)
 
         # -------------------------------------------------------------
         # 3. Check for completion (end == 1)
@@ -500,10 +566,14 @@ def run_single_conversation(
             transcript_lines.append("")
         else:
             end_val = turn_item.get("end", 0)
-            end_label = f" (end={end_val})"
+            state_val = turn_item.get("state")
+            state_label = f", state={state_val}" if state_val else ""
+            end_label = f" (end={end_val}{state_label})"
             transcript_lines.append(f"Turn {turn_num} [TUTOR{end_label} - {tutor_model.model_name}]:")
             if turn_item.get("reasoning"):
                 transcript_lines.append(f"  Reasoning: {turn_item.get('reasoning')}")
+            if state_val:
+                transcript_lines.append(f"  State    : {state_val}")
             transcript_lines.append(f"  Response : {turn_item.get('response', turn_item.get('text', ''))}")
             transcript_lines.append("")
 
@@ -517,7 +587,8 @@ def run_single_conversation(
     config_dict = {
         "tutor_model": tutor_model.model_name,
         "tutor_provider": tutor_model.provider,
-        "tutor_prompt": resolved_tutor_prompt_path.name,
+        "tutor_type": "finetuned_socratic" if is_finetuned else getattr(tutor_model, "tutor_type", None) or "base",
+        "tutor_prompt": "finetuned_socratic_xml" if is_finetuned else resolved_tutor_prompt_path.name,
         "student_model": student_model.model_name,
         "student_provider": student_model.provider,
         "max_iterations": max_iterations,

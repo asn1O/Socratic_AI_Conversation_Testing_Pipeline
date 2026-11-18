@@ -508,4 +508,103 @@ def test_run_pipeline_cli_failure_summary():
     assert "did not reach end: 1" in result.stdout
 
 
+def test_run_single_conversation_finetuned_socratic_mock(tmp_path):
+    from src.validator import is_valid_conversation_dataset
+
+    tutor = Model(
+        provider="Kaggle",
+        api_key="test",
+        model_name="qwen",
+        url="http://localhost",
+        tutor_type="finetuned_socratic",
+        prompt_format="sft_xml",
+    )
+    assert tutor.is_finetuned_socratic is True
+
+    student = Model(
+        provider="NVIDIA",
+        api_key="test",
+        model_name="nemotron-3",
+        url="http://localhost",
+    )
+
+    data_dir = tmp_path / "data"
+
+    success, save_path, record = run_single_conversation(
+        tutor_model=tutor,
+        student_model=student,
+        max_iterations=5,
+        data_dir=str(data_dir),
+        generator_id="ft_test",
+        mock=True,
+    )
+
+    assert success is True
+    assert save_path is not None
+    assert save_path.exists()
+
+    # Check configuration recording
+    assert record["config"]["tutor_type"] == "finetuned_socratic"
+    assert record["config"]["tutor_prompt"] == "finetuned_socratic_xml"
+    assert record["config"]["closed"] is True
+
+    # 3 mock rounds -> 6 turns total
+    convo = record["conversation"]
+    assert len(convo) == 6
+
+    # Verify tutor turns contain state and end mappings
+    tutor_turns = [t for t in convo if t["speaker"] == "tutor"]
+    assert len(tutor_turns) == 3
+
+    assert tutor_turns[0]["turn"] == 2
+    assert tutor_turns[0]["state"] == "Diagnosis"
+    assert tutor_turns[0]["end"] == 0
+
+    assert tutor_turns[1]["turn"] == 4
+    assert tutor_turns[1]["state"] == "Support"
+    assert tutor_turns[1]["end"] == 0
+
+    assert tutor_turns[2]["turn"] == 6
+    assert tutor_turns[2]["state"] == "Closing"
+    assert tutor_turns[2]["end"] == 1
+
+    # Verify saved conversation is 100% structurally valid under is_valid_conversation_dataset
+    is_valid, err_detail, _ = is_valid_conversation_dataset(record)
+    assert is_valid is True, f"Dataset validation failed: {err_detail}"
+
+    # Verify JSON file on disk
+    with save_path.open("r", encoding="utf-8") as f:
+        saved_records = json.load(f)
+    assert len(saved_records) == 1
+    assert saved_records[0]["conversation"][-1]["state"] == "Closing"
+    assert saved_records[0]["conversation"][-1]["end"] == 1
+
+
+def test_run_pipeline_cli_finetuned_tutor(tmp_path):
+    import subprocess
+    import sys
+    from scripts.run_pipeline import PROJECT_ROOT
+
+    data_dir = tmp_path / "data"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(PROJECT_ROOT / "scripts" / "run_pipeline.py"),
+            "--mock",
+            "--tutor-model", "Kaggle",
+            "--iterations", "1",
+            "--max-iterations", "5",
+            "--data-dir", str(data_dir),
+            "--log-file", "none",
+        ],
+        cwd=str(PROJECT_ROOT),
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+    assert "Tutor Model   : Kaggle - qwen" in result.stdout
+    assert "Successfully Stored   : 1" in result.stdout
+    assert "Failed Sessions       : 0" in result.stdout
+
+
 

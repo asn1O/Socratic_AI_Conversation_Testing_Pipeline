@@ -143,3 +143,170 @@ def test_is_valid_conversation_dataset():
     is_valid_bad, detail_bad, _ = is_valid_conversation_dataset(bad_convo)
     assert is_valid_bad is False
     assert "end" in detail_bad or "ended" in detail_bad
+
+
+def test_validate_finetuned_tutor_turn_valid_diagnosis():
+    from src.validator import validate_finetuned_tutor_turn
+
+    sample = (
+        "<reasoning>Student holds initial misconception about truck force.</reasoning>\n"
+        "<state>Diagnosis</state>\n"
+        "<response>Why do you think the larger vehicle exerts more force?</response>"
+    )
+    is_valid, parsed, err = validate_finetuned_tutor_turn(sample)
+    assert is_valid is True
+    assert err == ""
+    assert parsed["reasoning"] == "Student holds initial misconception about truck force."
+    assert parsed["state"] == "Diagnosis"
+    assert parsed["end"] == 0
+    assert parsed["response"] == "Why do you think the larger vehicle exerts more force?"
+
+
+def test_validate_finetuned_tutor_turn_valid_closing():
+    from src.validator import validate_finetuned_tutor_turn
+
+    sample = (
+        "<reasoning>Student articulated Newton's Third Law and generalized correctly.</reasoning>\n"
+        "<state>Closing</state>\n"
+        "<response>Exactly! You've mastered Newton's Third Law. Great work!</response>"
+    )
+    is_valid, parsed, err = validate_finetuned_tutor_turn(sample)
+    assert is_valid is True
+    assert err == ""
+    assert parsed["state"] == "Closing"
+    assert parsed["end"] == 1
+
+
+def test_validate_finetuned_tutor_turn_case_insensitive_closing():
+    from src.validator import validate_finetuned_tutor_turn
+
+    sample = (
+        "<REASONING>Good synthesis.</REASONING>\n"
+        "<STATE>closing</STATE>\n"
+        "<RESPONSE>Well done!</RESPONSE>"
+    )
+    is_valid, parsed, err = validate_finetuned_tutor_turn(sample)
+    assert is_valid is True
+    assert parsed["state"] == "Closing"
+    assert parsed["end"] == 1
+
+
+def test_validate_finetuned_tutor_turn_missing_tags():
+    from src.validator import validate_finetuned_tutor_turn
+
+    # Missing reasoning
+    sample_no_reasoning = "<state>Support</state><response>Hint here.</response>"
+    is_valid, parsed, err = validate_finetuned_tutor_turn(sample_no_reasoning)
+    assert is_valid is False
+    assert "missing or empty <reasoning>" in err
+
+    # Empty reasoning
+    sample_empty_reasoning = "<reasoning>   </reasoning><state>Support</state><response>Hint here.</response>"
+    is_valid, parsed, err = validate_finetuned_tutor_turn(sample_empty_reasoning)
+    assert is_valid is False
+    assert "missing or empty <reasoning>" in err
+
+    # Missing state
+    sample_no_state = "<reasoning>Some reasoning.</reasoning><response>Hint here.</response>"
+    is_valid, parsed, err = validate_finetuned_tutor_turn(sample_no_state)
+    assert is_valid is False
+    assert "missing or empty <state>" in err
+
+    # Missing response
+    sample_no_response = "<reasoning>Some reasoning.</reasoning><state>Support</state>"
+    is_valid, parsed, err = validate_finetuned_tutor_turn(sample_no_response)
+    assert is_valid is False
+    assert "missing or empty <response>" in err
+
+
+def test_validate_finetuned_tutor_turn_invalid_state():
+    from src.validator import validate_finetuned_tutor_turn
+
+    sample = (
+        "<reasoning>Valid reasoning.</reasoning>\n"
+        "<state>InvalidState</state>\n"
+        "<response>Valid response.</response>"
+    )
+    is_valid, parsed, err = validate_finetuned_tutor_turn(sample)
+    assert is_valid is False
+    assert "invalid <state> value" in err
+
+
+def test_validate_finetuned_tutor_turn_markdown_fences():
+    from src.validator import validate_finetuned_tutor_turn
+
+    sample = (
+        "```xml\n"
+        "<reasoning>Guiding student with hints.</reasoning>\n"
+        "<state>Support</state>\n"
+        "<response>Consider the formula F = ma.</response>\n"
+        "```"
+    )
+    is_valid, parsed, err = validate_finetuned_tutor_turn(sample)
+    assert is_valid is True
+    assert parsed["state"] == "Support"
+    assert parsed["end"] == 0
+    assert parsed["response"] == "Consider the formula F = ma."
+
+
+def test_validate_finetuned_tutor_turn_config_leakage():
+    from src.validator import validate_finetuned_tutor_turn
+
+    sample = (
+        "<reasoning>Student needs high verbosity and low socratic_level.</reasoning>\n"
+        "<state>Support</state>\n"
+        "<response>Here is a hint.</response>"
+    )
+    is_valid, parsed, err = validate_finetuned_tutor_turn(sample)
+    assert is_valid is False
+    assert "config leakage detected" in err
+
+
+def test_validate_tutor_turn_delegation_by_type():
+    from src.validator import validate_tutor_turn
+
+    xml_sample = (
+        "<reasoning>Good thought.</reasoning>\n"
+        "<state>Closing</state>\n"
+        "<response>Goodbye!</response>"
+    )
+    # With tutor_type="finetuned_socratic", routes to XML parser
+    is_valid, parsed, err = validate_tutor_turn(xml_sample, tutor_type="finetuned_socratic")
+    assert is_valid is True
+    assert parsed["state"] == "Closing"
+    assert parsed["end"] == 1
+
+    # Without tutor_type, routes to JSON parser (and rejects XML)
+    is_valid_base, _, err_base = validate_tutor_turn(xml_sample)
+    assert is_valid_base is False
+    assert "invalid JSON" in err_base
+
+
+def test_is_valid_conversation_dataset_finetuned():
+    """Verify that dataset validator accepts conversations with 'state' and correctly checks for 'Closing'."""
+    from src.validator import is_valid_conversation_dataset
+
+    convo_with_state = {
+        "problem": "Calculate force",
+        "conversation": [
+            {"turn": 1, "speaker": "student", "text": "Is force 20?"},
+            {
+                "turn": 2,
+                "speaker": "tutor",
+                "reasoning": "Student misapplied formula.",
+                "state": "Support",
+                "response": "Remember F = ma.",
+            },
+            {"turn": 3, "speaker": "student", "text": "Oh, F = 2 * 5 = 10 N!"},
+            {
+                "turn": 4,
+                "speaker": "tutor",
+                "reasoning": "Student solved correctly.",
+                "state": "Closing",
+                "response": "Spot on! That is correct.",
+            },
+        ],
+    }
+    is_valid, detail, category = is_valid_conversation_dataset(convo_with_state)
+    assert is_valid is True
+    assert detail == ""

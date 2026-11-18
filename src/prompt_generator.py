@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 import random
+import re
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -441,6 +442,15 @@ def format_conversation_history(
         speaker = item.get("speaker", "unknown")
         if speaker == "tutor":
             response = item.get("response", item.get("text", ""))
+            # Ensure no XML tags or reasoning/state leak into student conversation history
+            if isinstance(response, str):
+                if "<response>" in response and "</response>" in response:
+                    m = re.search(r"<response>(.*?)</response>", response, re.DOTALL | re.IGNORECASE)
+                    if m:
+                        response = m.group(1).strip()
+                response = re.sub(r"<reasoning>.*?</reasoning>", "", response, flags=re.DOTALL | re.IGNORECASE)
+                response = re.sub(r"<state>.*?</state>", "", response, flags=re.DOTALL | re.IGNORECASE)
+                response = response.strip()
             lines.append(f"Turn {turn} (Tutor): {response}")
         else:
             text = item.get("text", "")
@@ -837,6 +847,73 @@ def generate_tutor_prompt(
     return result
 
 
+FINETUNED_SOCRATIC_SYSTEM_PROMPT = (
+    "You are a Socratic tutor. Guide the student toward the answer without giving it away. "
+    "For every reply, output <reasoning>...</reasoning>, <state>...</state>, and <response>...</response>."
+)
+
+
+def build_finetuned_tutor_messages(
+    conversation_history: Optional[Union[List[Dict[str, Any]], str]] = None,
+    problem: Optional[str] = None,
+    system_prompt: Optional[str] = None,
+    **kwargs: Any,
+) -> List[Dict[str, str]]:
+    """
+    Build a standard OpenAI-compatible multi-turn messages array for the fine-tuned Socratic tutor:
+      - {"role": "system", "content": <exact SFT system prompt>}
+      - {"role": "user", "content": <initial problem statement / student opening message>}
+      - {"role": "assistant", "content": <tutor's FULL raw XML output from turn 1>}
+      - {"role": "user", "content": <student's reply from turn 1>}
+      - ...and so on.
+
+    Preserves full raw XML string (<reasoning>...</reasoning>\n<state>...</state>\n<response>...</response>)
+    in the tutor's assistant history.
+    """
+    sys_content = (system_prompt or FINETUNED_SOCRATIC_SYSTEM_PROMPT).strip()
+    messages: List[Dict[str, str]] = [{"role": "system", "content": sys_content}]
+
+    if not conversation_history:
+        if problem:
+            messages.append({"role": "user", "content": str(problem).strip()})
+        return messages
+
+    if isinstance(conversation_history, str):
+        cleaned = conversation_history.strip()
+        if cleaned:
+            messages.append({"role": "user", "content": cleaned})
+        elif problem:
+            messages.append({"role": "user", "content": str(problem).strip()})
+        return messages
+
+    if isinstance(conversation_history, list):
+        if len(conversation_history) == 0:
+            if problem:
+                messages.append({"role": "user", "content": str(problem).strip()})
+            return messages
+
+        # If conversation starts with a tutor turn and problem is provided, insert problem as initial user turn
+        first_speaker = str(conversation_history[0].get("speaker", "")).strip().lower()
+        if first_speaker in ("tutor", "assistant") and problem:
+            messages.append({"role": "user", "content": str(problem).strip()})
+
+        for item in conversation_history:
+            speaker = str(item.get("speaker", "")).strip().lower()
+            if speaker in ("student", "user"):
+                text = item.get("text") or item.get("content") or item.get("response", "")
+                messages.append({"role": "user", "content": str(text).strip()})
+            elif speaker in ("tutor", "assistant"):
+                raw_xml = item.get("raw_output") or item.get("raw_xml")
+                if not raw_xml:
+                    reasoning = item.get("reasoning", "")
+                    state = item.get("state", "")
+                    resp = item.get("response", item.get("text", ""))
+                    raw_xml = f"<reasoning>{reasoning}</reasoning>\n<state>{state}</state>\n<response>{resp}</response>"
+                messages.append({"role": "assistant", "content": str(raw_xml).strip()})
+
+    return messages
+
+
 class StudentPromptGenerator:
     """Class-based prompt generator for student simulator."""
 
@@ -941,6 +1018,21 @@ class TutorPromptGenerator:
         return self.generate_tutor_prompt(
             conversation_history=conversation_history,
             scenario_id=scenario_id,
+            **kwargs,
+        )
+
+    def generate_finetuned_messages(
+        self,
+        conversation_history: Optional[Union[List[Dict[str, Any]], str]] = None,
+        problem: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+        **kwargs: Any,
+    ) -> List[Dict[str, str]]:
+        """Generate multi-turn messages array for fine-tuned Socratic tutor."""
+        return build_finetuned_tutor_messages(
+            conversation_history=conversation_history,
+            problem=problem,
+            system_prompt=system_prompt,
             **kwargs,
         )
 

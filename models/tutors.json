@@ -50,8 +50,22 @@
   {
     "provider": "base",
     "api_key": "KAGGLE_SERVER",
-    "model_name": "qwen",
+    "model_name": "qwen-base",
     "url": "https://syracuse-dublin-lots-statement.trycloudflare.com/v1",
+    "wait_1_min": false,
+    "last_use": null,
+    "expired": false,
+    "no_of_replies": 0,
+    "avg_tokens_used": 0.0,
+    "consecutive_failures": 0
+  },
+  {
+    "provider": "Kaggle",
+    "api_key": "KAGGLE_SERVER",
+    "model_name": "qwen-ft",
+    "url": "https://syracuse-dublin-lots-statement.trycloudflare.com/v1",
+    "tutor_type": "finetuned_socratic",
+    "prompt_format": "sft_xml",
     "wait_1_min": false,
     "last_use": null,
     "expired": false,

@@ -26,11 +26,16 @@ _DIFFICULTY_LEAK_PATTERN = re.compile(
 )
 
 
+_XML_REASONING_PATTERN = re.compile(r"<reasoning>(.*?)</reasoning>", re.DOTALL | re.IGNORECASE)
+_XML_STATE_PATTERN = re.compile(r"<state>(.*?)</state>", re.DOTALL | re.IGNORECASE)
+_XML_RESPONSE_PATTERN = re.compile(r"<response>(.*?)</response>", re.DOTALL | re.IGNORECASE)
+
+
 def strip_wrappers(raw_text: str) -> str:
     """Remove markdown fences and reasoning scratchpad tags from model output."""
     cleaned = (raw_text or "").strip()
     if cleaned.startswith("```"):
-        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"^```(?:json|xml)?\s*", "", cleaned, flags=re.IGNORECASE)
         cleaned = re.sub(r"\s*```\s*$", "", cleaned)
     cleaned = _THOUGHT_BLOCK_PATTERN.sub("", cleaned)
     return cleaned.strip()
@@ -87,16 +92,92 @@ def check_config_leakage(text: str, custom_parameters: Optional[Dict[str, Any]] 
     return flags
 
 
-def validate_tutor_turn(
+def validate_finetuned_tutor_turn(
     reply_text: str,
     custom_parameters: Optional[Dict[str, Any]] = None,
 ) -> Tuple[bool, Optional[Dict[str, Any]], str]:
     """
-    Validate a single tutor turn response.
+    Validate a single tutor turn response from a fine-tuned Socratic model.
+    Expected format:
+      <reasoning>...</reasoning>
+      <state>Diagnosis|Support|Synthesis|Closing</state>
+      <response>...</response>
 
     Returns:
         (is_valid, parsed_turn_dict, error_message)
     """
+    cleaned = strip_wrappers(reply_text)
+    if not cleaned:
+        return False, None, "empty response"
+
+    # Extract <reasoning>
+    reasoning_match = _XML_REASONING_PATTERN.search(cleaned)
+    if not reasoning_match:
+        return False, None, "missing or empty <reasoning> tag"
+    reasoning = reasoning_match.group(1).strip()
+    if not reasoning:
+        return False, None, "missing or empty <reasoning> tag"
+
+    # Extract <state>
+    state_match = _XML_STATE_PATTERN.search(cleaned)
+    if not state_match:
+        return False, None, "missing or empty <state> tag"
+    raw_state = state_match.group(1).strip()
+    if not raw_state:
+        return False, None, "missing or empty <state> tag"
+
+    normalized_state = raw_state.lower()
+    if normalized_state not in VALID_TUTOR_STATES:
+        return (
+            False,
+            None,
+            f"invalid <state> value: '{raw_state}' (must be Diagnosis, Support, Synthesis, or Closing)",
+        )
+
+    # Normalize state casing: Diagnosis, Support, Synthesis, Closing
+    state_display = normalized_state.capitalize()
+
+    # Map state to pipeline termination flag
+    normalized_end = 1 if normalized_state == "closing" else 0
+
+    # Extract <response>
+    response_match = _XML_RESPONSE_PATTERN.search(cleaned)
+    if not response_match:
+        return False, None, "missing or empty <response> tag"
+    response = response_match.group(1).strip()
+    if not response:
+        return False, None, "missing or empty <response> tag"
+
+    # Check for config leakage in reasoning
+    leakage_flags = check_config_leakage(reasoning, custom_parameters)
+    if leakage_flags:
+        return False, None, f"config leakage detected in reasoning: {', '.join(leakage_flags)}"
+
+    valid_payload = {
+        "reasoning": reasoning,
+        "state": state_display,
+        "end": normalized_end,
+        "response": response,
+        "raw_output": reply_text.strip(),
+    }
+    return True, valid_payload, ""
+
+
+def validate_tutor_turn(
+    reply_text: str,
+    custom_parameters: Optional[Dict[str, Any]] = None,
+    tutor_type: Optional[str] = None,
+) -> Tuple[bool, Optional[Dict[str, Any]], str]:
+    """
+    Validate a single tutor turn response.
+    Supports JSON responses for base models and XML responses for finetuned_socratic models.
+
+    Returns:
+        (is_valid, parsed_turn_dict, error_message)
+    """
+    if tutor_type == "finetuned_socratic":
+        return validate_finetuned_tutor_turn(reply_text, custom_parameters)
+
     cleaned = strip_wrappers(reply_text)
     if not cleaned:
         return False, None, "empty response"
@@ -209,7 +290,13 @@ def is_valid_conversation_dataset(entry: dict) -> Tuple[bool, str, str]:
         if speaker == "tutor":
             tutor_turns.append((i, turn))
             end_val = turn.get("end")
-            if end_val not in (0, 1, "0", "1", True, False):
+            state_val = turn.get("state")
+            if end_val is None and state_val is not None:
+                normalized_state = str(state_val).strip().lower()
+                if normalized_state not in VALID_TUTOR_STATES:
+                    return False, f"turn {i+1} (tutor): invalid 'state' field '{state_val}'", "invalid tutor state value"
+                end_val = 1 if normalized_state == "closing" else 0
+            elif end_val not in (0, 1, "0", "1", True, False):
                 return False, f"turn {i+1} (tutor): invalid or missing 'end' field '{end_val}'", "invalid tutor end value"
 
             reasoning = str(turn.get("reasoning", ""))
@@ -229,10 +316,12 @@ def is_valid_conversation_dataset(entry: dict) -> Tuple[bool, str, str]:
 
     last_tutor_idx, last_tutor = tutor_turns[-1]
     last_end = last_tutor.get("end")
+    if last_end is None and last_tutor.get("state"):
+        last_end = 1 if str(last_tutor.get("state")).strip().lower() == "closing" else 0
     if last_end not in (1, "1", True):
         return (
             False,
-            f"turn {last_tutor_idx+1}: last tutor turn must have 'end': 1, got '{last_end}'",
+            f"turn {last_tutor_idx+1}: last tutor turn must have 'end': 1 or 'state': 'Closing', got '{last_tutor.get('state') or last_end}'",
             "last tutor turn not ended",
         )
 
