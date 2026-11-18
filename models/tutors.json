@@ -48,10 +48,10 @@
     "consecutive_failures": 0
   },
   {
-    "provider": "base",
+    "provider": "Kaggle",
     "api_key": "KAGGLE_SERVER",
     "model_name": "qwen-base",
-    "url": "https://syracuse-dublin-lots-statement.trycloudflare.com/v1",
+    "url": "https://eagle-exams-constantly-airfare.trycloudflare.com/v1",
     "wait_1_min": false,
     "last_use": null,
     "expired": false,
@@ -63,7 +63,7 @@
     "provider": "Kaggle",
     "api_key": "KAGGLE_SERVER",
     "model_name": "qwen-ft",
-    "url": "https://syracuse-dublin-lots-statement.trycloudflare.com/v1",
+    "url": "https://mission-cotton-williams-cant.trycloudflare.com/v1",
     "tutor_type": "finetuned_socratic",
     "prompt_format": "sft_xml",
     "wait_1_min": false,
