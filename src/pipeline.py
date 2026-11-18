@@ -99,6 +99,7 @@ def run_single_conversation(
     eval_combos: Optional[List[Dict[str, Any]]] = None,
     eval_combos_path: Optional[Union[str, Path]] = None,
     tutor_type: Optional[str] = None,
+    history_window: Optional[int] = None,
 ) -> Tuple[bool, Optional[Path], Dict[str, Any]]:
     """
     Run a multi-turn conversation between a student model and a tutor model.
@@ -222,8 +223,19 @@ def run_single_conversation(
         if not t_path.is_file() and (repo_root / tutor_prompt_path).is_file():
             t_path = repo_root / tutor_prompt_path
         resolved_tutor_prompt_path = t_path
+    elif getattr(tutor_model, "tutor_prompt", None):
+        t_path = Path(tutor_model.tutor_prompt)
+        if not t_path.is_file() and (repo_root / tutor_model.tutor_prompt).is_file():
+            t_path = repo_root / tutor_model.tutor_prompt
+        resolved_tutor_prompt_path = t_path
     else:
         resolved_tutor_prompt_path = repo_root / "socratic_tutor_prompt_small.md"
+
+    effective_history_window = (
+        history_window
+        if history_window is not None
+        else getattr(tutor_model, "history_window", None)
+    )
 
     is_finetuned = (
         tutor_type == "finetuned_socratic"
@@ -236,11 +248,13 @@ def run_single_conversation(
         else resolved_tutor_prompt_path.name
     )
 
+    window_label = f", Window={effective_history_window}" if effective_history_window else ""
     logger.info(
-        "Starting conversation test: Tutor=%s (%s, Type=%s), TutorPrompt=%s, Student=%s (%s, Persona=%s/%s, Scenario=%s)",
+        "Starting conversation test: Tutor=%s (%s, Type=%s%s), TutorPrompt=%s, Student=%s (%s, Persona=%s/%s, Scenario=%s)",
         tutor_model.model_name,
         tutor_model.provider,
         "finetuned_socratic" if is_finetuned else "base",
+        window_label,
         tutor_prompt_label,
         student_model.model_name,
         student_model.provider,
@@ -382,6 +396,7 @@ def run_single_conversation(
                 tutor_prompt = build_finetuned_tutor_messages(
                     conversation_history=conversation,
                     problem=problem_text,
+                    history_window=effective_history_window,
                 )
             else:
                 tutor_prompt = generate_tutor_prompt(
@@ -396,6 +411,7 @@ def run_single_conversation(
                     difficulty=difficulty_text,
                     learning_objective=learning_obj,
                     target_misconception=target_miscon,
+                    history_window=effective_history_window,
                 )
 
             if mock:
@@ -553,6 +569,7 @@ def run_single_conversation(
         f"  Student Model : {student_model.provider} - {student_model.model_name} ({resolved_persona_id} - {persona_name})",
         f"  Scenario ID   : {resolved_scenario_id}",
         f"  Problem       : {problem_text}",
+        f"  History Window: {effective_history_window if effective_history_window is not None else 'full'}",
         f"  Total Turns   : {len(conversation)} (Closed: {closed})",
         "=" * 70,
         "",
@@ -589,6 +606,7 @@ def run_single_conversation(
         "tutor_provider": tutor_model.provider,
         "tutor_type": "finetuned_socratic" if is_finetuned else getattr(tutor_model, "tutor_type", None) or "base",
         "tutor_prompt": "finetuned_socratic_xml" if is_finetuned else resolved_tutor_prompt_path.name,
+        "history_window": effective_history_window,
         "student_model": student_model.model_name,
         "student_provider": student_model.provider,
         "max_iterations": max_iterations,

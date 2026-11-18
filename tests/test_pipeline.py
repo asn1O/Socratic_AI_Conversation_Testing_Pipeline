@@ -591,7 +591,7 @@ def test_run_pipeline_cli_finetuned_tutor(tmp_path):
             sys.executable,
             str(PROJECT_ROOT / "scripts" / "run_pipeline.py"),
             "--mock",
-            "--tutor-model", "Kaggle",
+            "--tutor-model", "ft",
             "--iterations", "1",
             "--max-iterations", "5",
             "--data-dir", str(data_dir),
@@ -602,9 +602,120 @@ def test_run_pipeline_cli_finetuned_tutor(tmp_path):
         text=True,
     )
     assert result.returncode == 0
-    assert "Tutor Model   : Kaggle - qwen" in result.stdout
+    assert "Tutor Model   : ft - qwen-ft" in result.stdout
     assert "Successfully Stored   : 1" in result.stdout
     assert "Failed Sessions       : 0" in result.stdout
+
+
+def test_tutors_json_qwen_models_structure():
+    from src.pipeline import load_models_from_file
+    from scripts.run_pipeline import PROJECT_ROOT
+
+    tutors = load_models_from_file(str(PROJECT_ROOT / "models" / "tutors.json"))
+    assert len(tutors) == 8
+
+    # First 4 are NVIDIA and OpenRouter
+    assert tutors[0].provider == "NVIDIA"
+    assert tutors[1].provider == "NVIDIA"
+    assert tutors[2].provider == "OpenRouter"
+    assert tutors[3].provider == "OpenRouter"
+
+    # Last 4 are the newly configured Qwen models
+    m_base = tutors[4]
+    assert m_base.provider == "base"
+    assert m_base.model_name == "qwen-base"
+    assert m_base.tutor_prompt == "base_tutor_prompt.md"
+    assert m_base.history_window == 8
+
+    m_socratic = tutors[5]
+    assert m_socratic.provider == "socratic"
+    assert m_socratic.model_name == "qwen-base"
+    assert m_socratic.tutor_prompt == "socratic_tutor_prompt_small.md"
+    assert m_socratic.history_window == 8
+
+    m_ft = tutors[6]
+    assert m_ft.provider == "ft"
+    assert m_ft.model_name == "qwen-ft"
+    assert m_ft.is_finetuned_socratic is True
+    assert m_ft.history_window == 8
+
+    m_socratic_ft = tutors[7]
+    assert m_socratic_ft.provider == "socratic_ft"
+    assert m_socratic_ft.model_name == "qwen-ft"
+    assert m_socratic_ft.is_finetuned_socratic is True
+    assert m_socratic_ft.history_window == 8
+
+
+def test_run_single_conversation_history_window_in_config(tmp_path):
+    from src.pipeline import run_single_conversation
+    from src.model import Model
+
+    tutor = Model(
+        provider="base",
+        api_key="test",
+        model_name="qwen-base",
+        url="http://localhost",
+        history_window=8,
+    )
+    student = Model(
+        provider="NVIDIA",
+        api_key="test",
+        model_name="nvidia/nemotron-3-ultra-550b-a55b",
+        url="http://localhost",
+    )
+
+    data_dir = tmp_path / "data"
+    success, save_path, record = run_single_conversation(
+        tutor_model=tutor,
+        student_model=student,
+        max_iterations=3,
+        data_dir=str(data_dir),
+        mock=True,
+    )
+
+    assert success is True
+    assert save_path.is_file()
+    assert record["config"]["history_window"] == 8
+    assert record["config"]["tutor_provider"] == "base"
+
+
+def test_cli_runs_all_4_qwen_models_mock(tmp_path):
+    import subprocess
+    import sys
+    from scripts.run_pipeline import PROJECT_ROOT
+
+    data_dir = tmp_path / "data"
+    # Test indices 4, 5, 6, 7
+    expected_providers = [
+        (4, "base", "qwen-base"),
+        (5, "socratic", "qwen-base"),
+        (6, "ft", "qwen-ft"),
+        (7, "socratic_ft", "qwen-ft"),
+    ]
+
+    for idx, provider, model_name in expected_providers:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(PROJECT_ROOT / "scripts" / "run_pipeline.py"),
+                "--mock",
+                "--tutor-index", str(idx),
+                "--student-index", "2",
+                "--iterations", "1",
+                "--max-iterations", "3",
+                "--data-dir", str(data_dir),
+                "--log-file", "none",
+            ],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, f"Failed for tutor index {idx}: {result.stderr}"
+        assert f"Tutor Model   : {provider} - {model_name}" in result.stdout
+        assert "Student Model : NVIDIA - nvidia/nemotron-3-ultra-550b-a55b" in result.stdout
+        assert "History Window: 8" in result.stdout
+        assert "Successfully Stored   : 1" in result.stdout
+
 
 
 

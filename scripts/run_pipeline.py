@@ -51,8 +51,8 @@ def main():
         "--tutor-prompt-path",
         dest="tutor_prompt",
         type=str,
-        default="socratic_tutor_prompt_small.md",
-        help="Path or filename of tutor prompt markdown file (default: socratic_tutor_prompt_small.md).",
+        default=None,
+        help="Path or filename of tutor prompt markdown file (default: model's tutor_prompt or socratic_tutor_prompt_small.md).",
     )
     parser.add_argument(
         "--tutor-index",
@@ -83,6 +83,12 @@ def main():
         type=str,
         default=None,
         help="Optional tutor type override (e.g., 'finetuned_socratic' or 'base'). Defaults to model configuration in tutors.json.",
+    )
+    parser.add_argument(
+        "--history-window",
+        type=int,
+        default=None,
+        help="Sliding window size (number of recent turns) for tutor prompt. Defaults to model setting in tutors.json (or None for full history).",
     )
     parser.add_argument(
         "--iterations",
@@ -167,15 +173,6 @@ def main():
     tutors = load_models_from_file(args.tutors_path)
     students = load_models_from_file(args.students_path)
 
-    # Resolve tutor prompt template path
-    tutor_prompt_path = Path(args.tutor_prompt)
-    if not tutor_prompt_path.is_file():
-        candidate = PROJECT_ROOT / args.tutor_prompt
-        if candidate.is_file():
-            tutor_prompt_path = candidate
-        else:
-            parser.error(f"Tutor prompt file not found: {args.tutor_prompt}")
-
     tutor = get_model_by_index_or_name(
         tutors,
         index=None if args.tutor_model else args.tutor_index,
@@ -186,6 +183,16 @@ def main():
         index=None if args.student_model else args.student_index,
         name=args.student_model,
     )
+
+    # Resolve tutor prompt template path
+    target_prompt = args.tutor_prompt or getattr(tutor, "tutor_prompt", None) or "socratic_tutor_prompt_small.md"
+    tutor_prompt_path = Path(target_prompt)
+    if not tutor_prompt_path.is_file():
+        candidate = PROJECT_ROOT / target_prompt
+        if candidate.is_file():
+            tutor_prompt_path = candidate
+        else:
+            parser.error(f"Tutor prompt file not found: {target_prompt}")
 
     # Determine log file path (defaults to logs/{provider}_{model_name}.log based on tutor model)
     if args.log_file is None:
@@ -213,10 +220,13 @@ def main():
     if args.eval_mode:
         eval_combos = load_eval_combos(args.eval_combos_path)
 
+    effective_window = args.history_window if args.history_window is not None else getattr(tutor, "history_window", None)
+
     print("\n" + "=" * 60)
     print("Conversation Testing Pipeline Configuration")
     print(f"  Tutor Model   : {tutor.provider} - {tutor.model_name}")
     print(f"  Tutor Prompt  : {tutor_prompt_path.name} ({tutor_prompt_path})")
+    print(f"  History Window: {effective_window if effective_window is not None else 'full'}")
     print(f"  Student Model : {student.provider} - {student.model_name}")
     if args.eval_mode:
         print(f"  Mode          : EVAL MODE ({len(eval_combos)} sequential benchmark combos)")
@@ -279,6 +289,7 @@ def main():
             eval_combos=eval_combos if args.eval_mode else None,
             eval_combos_path=args.eval_combos_path,
             tutor_type=args.tutor_type,
+            history_window=args.history_window,
         )
         if success and save_path:
             successful += 1

@@ -298,3 +298,157 @@ def test_tutor_prompt_generator_class_finetuned():
     assert "You are a Socratic tutor." in messages[0]["content"]
     assert messages[1]["role"] == "user"
     assert messages[1]["content"] == "Hello, need help with calculus."
+
+
+def test_apply_sliding_window_noop():
+    from src.prompt_generator import apply_sliding_window
+
+    convo = [
+        {"turn": 1, "speaker": "student", "text": "Turn 1"},
+        {"turn": 2, "speaker": "tutor", "response": "Turn 2"},
+        {"turn": 3, "speaker": "student", "text": "Turn 3"},
+    ]
+    # None or <= 0 window
+    assert apply_sliding_window(convo, None) == convo
+    assert apply_sliding_window(convo, 0) == convo
+    # window >= len
+    assert apply_sliding_window(convo, 3) == convo
+    assert apply_sliding_window(convo, 8) == convo
+
+
+def test_apply_sliding_window_anchors_turn_1_and_tail():
+    from src.prompt_generator import apply_sliding_window
+
+    convo = [
+        {"turn": 1, "speaker": "student", "text": "Initial problem question"},
+        {"turn": 2, "speaker": "tutor", "response": "Tutor turn 2"},
+        {"turn": 3, "speaker": "student", "text": "Student turn 3"},
+        {"turn": 4, "speaker": "tutor", "response": "Tutor turn 4"},
+        {"turn": 5, "speaker": "student", "text": "Student turn 5"},
+        {"turn": 6, "speaker": "tutor", "response": "Tutor turn 6"},
+        {"turn": 7, "speaker": "student", "text": "Student turn 7"},
+        {"turn": 8, "speaker": "tutor", "response": "Tutor turn 8"},
+        {"turn": 9, "speaker": "student", "text": "Student turn 9"},
+        {"turn": 10, "speaker": "tutor", "response": "Tutor turn 10"},
+        {"turn": 11, "speaker": "student", "text": "Student turn 11"},
+    ]
+    # Window of 8 on 11 turns:
+    # len=11, window=8 -> 11 - 8 = index 3 (Turn 4, tutor).
+    # Turn 1 is anchored, turns 2-3 are omitted, turns 4-11 are in tail.
+    windowed = apply_sliding_window(convo, window_size=8)
+    assert len(windowed) == 9
+    assert windowed[0]["turn"] == 1
+    assert [t["turn"] for t in windowed] == [1, 4, 5, 6, 7, 8, 9, 10, 11]
+    # Verify speaker alternation: student (user), tutor (assistant), student, tutor...
+    speakers = [t["speaker"] for t in windowed]
+    assert speakers == [
+        "student", "tutor", "student", "tutor", "student",
+        "tutor", "student", "tutor", "student"
+    ]
+
+
+def test_apply_sliding_window_role_alternation_odd_window():
+    from src.prompt_generator import apply_sliding_window
+
+    convo = [
+        {"turn": 1, "speaker": "student", "text": "Turn 1"},
+        {"turn": 2, "speaker": "tutor", "response": "Turn 2"},
+        {"turn": 3, "speaker": "student", "text": "Turn 3"},
+        {"turn": 4, "speaker": "tutor", "response": "Turn 4"},
+        {"turn": 5, "speaker": "student", "text": "Turn 5"},
+        {"turn": 6, "speaker": "tutor", "response": "Turn 6"},
+        {"turn": 7, "speaker": "student", "text": "Turn 7"},
+        {"turn": 8, "speaker": "tutor", "response": "Turn 8"},
+        {"turn": 9, "speaker": "student", "text": "Turn 9"},
+        {"turn": 10, "speaker": "tutor", "response": "Turn 10"},
+        {"turn": 11, "speaker": "student", "text": "Turn 11"},
+    ]
+    # Window of 7: 11 - 7 = 4 (Turn 5, student).
+    # Adjusts start_idx back by 1 so tail starts on Turn 4 (tutor), avoiding student->student.
+    windowed = apply_sliding_window(convo, window_size=7, for_messages=True)
+    assert windowed[0]["turn"] == 1
+    assert windowed[1]["turn"] == 4
+    assert [t["turn"] for t in windowed] == [1, 4, 5, 6, 7, 8, 9, 10, 11]
+
+
+def test_generate_tutor_prompt_sliding_window():
+    from src.prompt_generator import generate_tutor_prompt
+
+    convo = [
+        {"turn": 1, "speaker": "student", "text": "Student Turn 1 Problem"},
+        {"turn": 2, "speaker": "tutor", "response": "Tutor Turn 2"},
+        {"turn": 3, "speaker": "student", "text": "Student Turn 3"},
+        {"turn": 4, "speaker": "tutor", "response": "Tutor Turn 4"},
+        {"turn": 5, "speaker": "student", "text": "Student Turn 5"},
+        {"turn": 6, "speaker": "tutor", "response": "Tutor Turn 6"},
+        {"turn": 7, "speaker": "student", "text": "Student Turn 7"},
+        {"turn": 8, "speaker": "tutor", "response": "Tutor Turn 8"},
+        {"turn": 9, "speaker": "student", "text": "Student Turn 9"},
+        {"turn": 10, "speaker": "tutor", "response": "Tutor Turn 10"},
+        {"turn": 11, "speaker": "student", "text": "Student Turn 11"},
+    ]
+    prompt = generate_tutor_prompt(conversation_history=convo, history_window=8)
+    assert "Student Turn 1 Problem" in prompt
+    assert "Student Turn 3" not in prompt
+    assert "Tutor Turn 2" not in prompt
+    assert "Tutor Turn 4" in prompt
+    assert "Student Turn 11" in prompt
+
+
+def test_build_finetuned_tutor_messages_sliding_window():
+    from src.prompt_generator import build_finetuned_tutor_messages
+
+    convo = [
+        {"turn": 1, "speaker": "student", "text": "Student Turn 1 Problem"},
+        {"turn": 2, "speaker": "tutor", "raw_output": "<reasoning>R2</reasoning><state>Diagnosis</state><response>Tutor 2</response>"},
+        {"turn": 3, "speaker": "student", "text": "Student Turn 3"},
+        {"turn": 4, "speaker": "tutor", "raw_output": "<reasoning>R4</reasoning><state>Support</state><response>Tutor 4</response>"},
+        {"turn": 5, "speaker": "student", "text": "Student Turn 5"},
+        {"turn": 6, "speaker": "tutor", "raw_output": "<reasoning>R6</reasoning><state>Support</state><response>Tutor 6</response>"},
+        {"turn": 7, "speaker": "student", "text": "Student Turn 7"},
+        {"turn": 8, "speaker": "tutor", "raw_output": "<reasoning>R8</reasoning><state>Support</state><response>Tutor 8</response>"},
+        {"turn": 9, "speaker": "student", "text": "Student Turn 9"},
+        {"turn": 10, "speaker": "tutor", "raw_output": "<reasoning>R10</reasoning><state>Support</state><response>Tutor 10</response>"},
+        {"turn": 11, "speaker": "student", "text": "Student Turn 11"},
+    ]
+    messages = build_finetuned_tutor_messages(conversation_history=convo, history_window=8)
+    # Role structure: system, user (Turn 1), assistant (Turn 4), user (Turn 5)...
+    roles = [m["role"] for m in messages]
+    assert roles == [
+        "system",
+        "user", "assistant", "user", "assistant",
+        "user", "assistant", "user", "assistant", "user"
+    ]
+    # Contents check
+    assert messages[1]["content"] == "Student Turn 1 Problem"
+    assert "Tutor 4" in messages[2]["content"]
+    assert "Student Turn 3" not in [m["content"] for m in messages]
+    assert messages[-1]["content"] == "Student Turn 11"
+
+
+def test_student_prompt_always_full_history_and_zero_tutor_reasoning():
+    from src.prompt_generator import generate_student_prompt
+
+    convo = [
+        {"turn": 1, "speaker": "student", "text": "Student Turn 1 Problem"},
+        {"turn": 2, "speaker": "tutor", "reasoning": "SECRET_REASONING_2", "state": "Diagnosis", "response": "Tutor Turn 2"},
+        {"turn": 3, "speaker": "student", "text": "Student Turn 3"},
+        {"turn": 4, "speaker": "tutor", "reasoning": "SECRET_REASONING_4", "state": "Support", "response": "Tutor Turn 4"},
+        {"turn": 5, "speaker": "student", "text": "Student Turn 5"},
+        {"turn": 6, "speaker": "tutor", "reasoning": "SECRET_REASONING_6", "state": "Support", "response": "Tutor Turn 6"},
+        {"turn": 7, "speaker": "student", "text": "Student Turn 7"},
+        {"turn": 8, "speaker": "tutor", "reasoning": "SECRET_REASONING_8", "state": "Support", "response": "Tutor Turn 8"},
+        {"turn": 9, "speaker": "student", "text": "Student Turn 9"},
+        {"turn": 10, "speaker": "tutor", "reasoning": "SECRET_REASONING_10", "state": "Support", "response": "Tutor Turn 10"},
+        {"turn": 11, "speaker": "student", "text": "Student Turn 11"},
+    ]
+    student_prompt = generate_student_prompt(conversation_history=convo)
+    # Verify student model gets the complete conversation (all turns from 1 to 11)
+    for t in range(1, 12):
+        assert f"Turn {t}" in student_prompt
+
+    # Verify zero tutor reasoning or state appears in student prompt
+    assert "SECRET_REASONING" not in student_prompt
+    assert "<reasoning>" not in student_prompt
+    assert "<state>" not in student_prompt
+    assert "<response>" not in student_prompt

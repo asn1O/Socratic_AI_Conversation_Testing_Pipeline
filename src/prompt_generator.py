@@ -405,6 +405,37 @@ def normalize_conversation_history(
     return str_val if str_val else empty_placeholder
 
 
+def apply_sliding_window(
+    conversation: List[Dict[str, Any]],
+    window_size: Optional[int],
+    for_messages: bool = False,
+) -> List[Dict[str, Any]]:
+    """
+    Apply anchored sliding window to conversation history:
+    - Always preserves Turn 1 (conversation[0]) anchored so the original problem context is never lost.
+    - Preserves the most recent `window_size` turns (tail).
+    - If for_messages=True (or generally), ensures the tail starts with a tutor turn (assistant)
+      to maintain proper user -> assistant role alternation after Turn 1.
+    """
+    if not window_size or window_size <= 0:
+        return conversation
+    if not conversation or len(conversation) <= window_size:
+        return conversation
+
+    # Start with the last window_size turns
+    start_idx = len(conversation) - window_size
+
+    # Ensure tail begins with a tutor/assistant turn if start_idx is beyond Turn 1
+    if start_idx > 1:
+        first_tail_speaker = str(conversation[start_idx].get("speaker", "")).strip().lower()
+        if first_tail_speaker in ("student", "user"):
+            start_idx -= 1
+
+    if start_idx <= 1:
+        return conversation
+
+    return [conversation[0]] + conversation[start_idx:]
+
 
 def _read_prompt_template(filename: str, fallback_filename: Optional[str] = None) -> str:
     """Read a markdown prompt template from the file system or repo root."""
@@ -715,6 +746,7 @@ def generate_tutor_prompt(
     learning_objective: Optional[str] = None,
     target_misconception: Optional[str] = None,
     empty_history_text: str = "no conversation history",
+    history_window: Optional[int] = None,
     **kwargs: Any,
 ) -> str:
     """
@@ -803,6 +835,10 @@ def generate_tutor_prompt(
     if conv_input == "" and parameters and "conversation_history" in parameters:
         conv_input = parameters["conversation_history"]
 
+    # Apply sliding window for tutor history if specified
+    if isinstance(conv_input, list) and history_window:
+        conv_input = apply_sliding_window(conv_input, window_size=history_window, for_messages=False)
+
     history_str = normalize_conversation_history(
         conv_input, empty_placeholder=empty_history_text
     )
@@ -857,6 +893,7 @@ def build_finetuned_tutor_messages(
     conversation_history: Optional[Union[List[Dict[str, Any]], str]] = None,
     problem: Optional[str] = None,
     system_prompt: Optional[str] = None,
+    history_window: Optional[int] = None,
     **kwargs: Any,
 ) -> List[Dict[str, str]]:
     """
@@ -892,12 +929,17 @@ def build_finetuned_tutor_messages(
                 messages.append({"role": "user", "content": str(problem).strip()})
             return messages
 
+        # Apply sliding window for fine-tuned tutor messages if specified
+        active_history = conversation_history
+        if history_window:
+            active_history = apply_sliding_window(conversation_history, window_size=history_window, for_messages=True)
+
         # If conversation starts with a tutor turn and problem is provided, insert problem as initial user turn
-        first_speaker = str(conversation_history[0].get("speaker", "")).strip().lower()
+        first_speaker = str(active_history[0].get("speaker", "")).strip().lower()
         if first_speaker in ("tutor", "assistant") and problem:
             messages.append({"role": "user", "content": str(problem).strip()})
 
-        for item in conversation_history:
+        for item in active_history:
             speaker = str(item.get("speaker", "")).strip().lower()
             if speaker in ("student", "user"):
                 text = item.get("text") or item.get("content") or item.get("response", "")
@@ -996,6 +1038,7 @@ class TutorPromptGenerator:
         self,
         conversation_history: Union[str, List[Dict[str, Any]], None] = "",
         scenario_id: Optional[str] = None,
+        history_window: Optional[int] = None,
         **kwargs: Any,
     ) -> str:
         """Generate the complete tutor prompt."""
@@ -1005,6 +1048,7 @@ class TutorPromptGenerator:
             template_path=self.template_path,
             question_bank=self.question_bank,
             question_bank_path=self.question_bank_path,
+            history_window=history_window,
             **kwargs,
         )
 
@@ -1012,12 +1056,14 @@ class TutorPromptGenerator:
         self,
         conversation_history: Union[str, List[Dict[str, Any]], None] = "",
         scenario_id: Optional[str] = None,
+        history_window: Optional[int] = None,
         **kwargs: Any,
     ) -> str:
         """Alias for generate_tutor_prompt."""
         return self.generate_tutor_prompt(
             conversation_history=conversation_history,
             scenario_id=scenario_id,
+            history_window=history_window,
             **kwargs,
         )
 
@@ -1026,6 +1072,7 @@ class TutorPromptGenerator:
         conversation_history: Optional[Union[List[Dict[str, Any]], str]] = None,
         problem: Optional[str] = None,
         system_prompt: Optional[str] = None,
+        history_window: Optional[int] = None,
         **kwargs: Any,
     ) -> List[Dict[str, str]]:
         """Generate multi-turn messages array for fine-tuned Socratic tutor."""
@@ -1033,6 +1080,7 @@ class TutorPromptGenerator:
             conversation_history=conversation_history,
             problem=problem,
             system_prompt=system_prompt,
+            history_window=history_window,
             **kwargs,
         )
 

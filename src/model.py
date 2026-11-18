@@ -35,6 +35,8 @@ class Model:
     consecutive_failures: int = 0
     tutor_type: Optional[str] = None
     prompt_format: Optional[str] = None
+    history_window: Optional[int] = None
+    tutor_prompt: Optional[str] = None
 
     @property
     def is_finetuned_socratic(self) -> bool:
@@ -79,6 +81,8 @@ class Model:
         api_key_env = d.get("api_key", "")
         # Resolve from environment variable if present, else use as-is
         resolved_key = os.getenv(api_key_env, api_key_env)
+        history_window_val = d.get("history_window")
+        history_window = int(history_window_val) if history_window_val is not None else None
         return Model(
             provider=d.get("provider", "Unknown"),
             api_key=resolved_key,
@@ -93,6 +97,8 @@ class Model:
             consecutive_failures=int(d.get("consecutive_failures", 0)),
             tutor_type=d.get("tutor_type"),
             prompt_format=d.get("prompt_format"),
+            history_window=history_window,
+            tutor_prompt=d.get("tutor_prompt"),
         )
 
     def record_response(self, total_tokens: Optional[int] = None) -> None:
