@@ -446,6 +446,7 @@ def test_run_pipeline_cli_default_log_and_summary(tmp_path):
     from scripts.run_pipeline import PROJECT_ROOT
 
     # Run in mock mode without specifying --log-file; should default to logs/{tutor_stem}.log
+    data_dir = tmp_path / "data"
     result = subprocess.run(
         [
             sys.executable,
@@ -453,6 +454,7 @@ def test_run_pipeline_cli_default_log_and_summary(tmp_path):
             "--mock",
             "--iterations", "2",
             "--max-iterations", "2",
+            "--data-dir", str(data_dir),
         ],
         cwd=str(PROJECT_ROOT),
         capture_output=True,
@@ -478,12 +480,13 @@ def test_run_pipeline_cli_default_log_and_summary(tmp_path):
     assert "Successfully Stored   : 2" in content
 
 
-def test_run_pipeline_cli_failure_summary():
+def test_run_pipeline_cli_failure_summary(tmp_path):
     import subprocess
     import sys
     from scripts.run_pipeline import PROJECT_ROOT
 
     # Run in mock mode with require-closing and max-iterations 1 (will fail because mock requires 3 rounds for closing)
+    data_dir = tmp_path / "data"
     result = subprocess.run(
         [
             sys.executable,
@@ -492,6 +495,7 @@ def test_run_pipeline_cli_failure_summary():
             "--iterations", "2",
             "--max-iterations", "1",
             "--require-closing",
+            "--data-dir", str(data_dir),
             "--log-file", "none",
         ],
         cwd=str(PROJECT_ROOT),
@@ -644,6 +648,7 @@ def test_tutors_json_qwen_models_structure():
     assert m_socratic_ft.model_name == "qwen-ft"
     assert m_socratic_ft.is_finetuned_socratic is True
     assert m_socratic_ft.history_window == 8
+    assert m_socratic_ft.system_prompt == "pedagogical"
 
 
 def test_run_single_conversation_history_window_in_config(tmp_path):
@@ -715,6 +720,85 @@ def test_cli_runs_all_4_qwen_models_mock(tmp_path):
         assert "Student Model : NVIDIA - nvidia/nemotron-3-ultra-550b-a55b" in result.stdout
         assert "History Window: 8" in result.stdout
         assert "Successfully Stored   : 1" in result.stdout
+
+
+def test_pipeline_differentiates_ft_and_socratic_ft_system_prompts(tmp_path):
+    from src.pipeline import load_models_from_file, run_single_conversation
+    from scripts.run_pipeline import PROJECT_ROOT
+
+    tutors = load_models_from_file(str(PROJECT_ROOT / "models" / "tutors.json"))
+    students = load_models_from_file(str(PROJECT_ROOT / "models" / "students.json"))
+
+    tutor_ft = tutors[6]          # provider: "ft"
+    tutor_socratic_ft = tutors[7] # provider: "socratic_ft", system_prompt: "pedagogical"
+    student = students[2]
+
+    data_dir = tmp_path / "data"
+
+    # Test ft -> minimal system prompt label
+    success, _, record_ft = run_single_conversation(
+        tutor_model=tutor_ft,
+        student_model=student,
+        max_iterations=2,
+        data_dir=str(data_dir),
+        mock=True,
+    )
+    assert success is True
+    assert record_ft["config"]["tutor_prompt"] == "finetuned_socratic_xml"
+
+    # Test socratic_ft -> pedagogical system prompt label
+    success, _, record_sft = run_single_conversation(
+        tutor_model=tutor_socratic_ft,
+        student_model=student,
+        max_iterations=2,
+        data_dir=str(data_dir),
+        mock=True,
+    )
+    assert success is True
+    assert record_sft["config"]["tutor_prompt"] == "finetuned_socratic_pedagogical_xml"
+
+
+def test_pipeline_passes_pedagogical_prompt_to_socratic_ft_messages(tmp_path, monkeypatch):
+    from src.pipeline import load_models_from_file, run_single_conversation
+    from src.prompt_generator import FINETUNED_SOCRATIC_PEDAGOGICAL_SYSTEM_PROMPT, FINETUNED_SOCRATIC_SYSTEM_PROMPT
+    from scripts.run_pipeline import PROJECT_ROOT
+
+    tutors = load_models_from_file(str(PROJECT_ROOT / "models" / "tutors.json"))
+    students = load_models_from_file(str(PROJECT_ROOT / "models" / "students.json"))
+
+    tutor_socratic_ft = tutors[7]
+    student = students[2]
+
+    captured_tutor_prompts = []
+
+    def mock_student_call(prompt, **kwargs):
+        return True, "I think 2 + 2 = 5.", 10, None
+
+    def mock_tutor_call(prompt, **kwargs):
+        captured_tutor_prompts.append(prompt)
+        return True, "<reasoning>Student made arithmetic error</reasoning><state>Closing</state><response>Check again</response>", 20, None
+
+    monkeypatch.setattr(student, "call_model", mock_student_call)
+    monkeypatch.setattr(tutor_socratic_ft, "call_model", mock_tutor_call)
+
+    data_dir = tmp_path / "data"
+    success, _, _ = run_single_conversation(
+        tutor_model=tutor_socratic_ft,
+        student_model=student,
+        max_iterations=1,
+        data_dir=str(data_dir),
+        mock=False,
+    )
+
+    assert success is True
+    assert len(captured_tutor_prompts) == 1
+    # Verify the messages array passed to socratic_ft contains the pedagogical system prompt
+    first_message = captured_tutor_prompts[0][0]
+    assert first_message["role"] == "system"
+    assert first_message["content"] == FINETUNED_SOCRATIC_PEDAGOGICAL_SYSTEM_PROMPT
+    assert "Diagnosis" in first_message["content"]
+    assert "Closing" in first_message["content"]
+
 
 
 

@@ -1,0 +1,8 @@
+[2026-11-18T17:36:51.325677+00:00] REJECTED REASON: Tutor failed structural validation on turn 2: model call error: TIMEOUT_OR_CONNECTION_ERROR
+[
+  {
+    "turn": 1,
+    "speaker": "student",
+    "text": "I've been thinking about this physics problem and I'm pretty sure I understand it, but I want to run it by you. So if a truck hits a small car, the truck exerts way more force on the car than the car exerts on the truck, right? Because the truck is so much heavier and has more momentum. That's why the car gets crushed but the truck barely gets a scratch. The forces aren't equal at all - the bigger object definitely pushes harder. Am I on the right track here?"
+  }
+]

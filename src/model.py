@@ -37,6 +37,7 @@ class Model:
     prompt_format: Optional[str] = None
     history_window: Optional[int] = None
     tutor_prompt: Optional[str] = None
+    system_prompt: Optional[str] = None
 
     @property
     def is_finetuned_socratic(self) -> bool:
@@ -99,6 +100,7 @@ class Model:
             prompt_format=d.get("prompt_format"),
             history_window=history_window,
             tutor_prompt=d.get("tutor_prompt"),
+            system_prompt=d.get("system_prompt"),
         )
 
     def record_response(self, total_tokens: Optional[int] = None) -> None:

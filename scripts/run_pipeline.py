@@ -91,6 +91,12 @@ def main():
         help="Sliding window size (number of recent turns) for tutor prompt. Defaults to model setting in tutors.json (or None for full history).",
     )
     parser.add_argument(
+        "--system-prompt",
+        type=str,
+        default=None,
+        help="Optional system prompt override for fine-tuned tutor models ('default', 'pedagogical', or custom text).",
+    )
+    parser.add_argument(
         "--iterations",
         type=int,
         default=1,
@@ -290,6 +296,7 @@ def main():
             eval_combos_path=args.eval_combos_path,
             tutor_type=args.tutor_type,
             history_window=args.history_window,
+            system_prompt=args.system_prompt,
         )
         if success and save_path:
             successful += 1

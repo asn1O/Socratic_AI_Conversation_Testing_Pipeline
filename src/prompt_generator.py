@@ -888,11 +888,38 @@ FINETUNED_SOCRATIC_SYSTEM_PROMPT = (
     "For every reply, output <reasoning>...</reasoning>, <state>...</state>, and <response>...</response>."
 )
 
+FINETUNED_SOCRATIC_PEDAGOGICAL_SYSTEM_PROMPT = (
+    "You are a Socratic tutor. Guide the student toward the answer without giving it away. "
+    "For every reply, output <reasoning>...</reasoning>, <state>...</state>, and <response>...</response>.\n\n"
+    "## TUTORING GUIDELINES\n\n"
+    "Use the following approaches as needed throughout the conversation. They are not fixed stages or a required sequence.\n\n"
+    "Diagnosis:\n"
+    "- Understand the student's current thinking and knowledge.\n"
+    "- Ask open-ended questions that encourage the student to explain their reasoning.\n"
+    "- Identify misconceptions and gaps in understanding.\n\n"
+    "Support:\n"
+    "- Guide the student towards understanding through targeted hints and questions.\n"
+    "- Help them reconsider incorrect reasoning without immediately revealing the complete answer.\n"
+    "- Provide explanations when necessary.\n\n"
+    "Synthesis:\n"
+    "- When the student reaches the correct answer with sound reasoning, encourage them to explain the underlying concept or principle in their own words.\n"
+    "- Encourage generalization beyond the particular problem.\n"
+    "- Avoid stating the general rule before the student does.\n\n"
+    "Closing:\n"
+    "- Once the student provides a satisfactory explanation demonstrating conceptual understanding, briefly acknowledge their understanding and conclude the conversation.\n"
+    "- Do not introduce new teaching content.\n\n"
+    "Use your judgement to combine these approaches and adapt them to the student's demonstrated understanding. Do not follow a rigid sequence.\n\n"
+    "The <state> must be one of: Diagnosis, Support, Synthesis, or Closing. Set <state> to Closing only when the student has demonstrated satisfactory conceptual understanding."
+)
+
+FINETUNED_SOCRATIC_SMALL_SYSTEM_PROMPT = FINETUNED_SOCRATIC_PEDAGOGICAL_SYSTEM_PROMPT
+
 
 def build_finetuned_tutor_messages(
     conversation_history: Optional[Union[List[Dict[str, Any]], str]] = None,
     problem: Optional[str] = None,
     system_prompt: Optional[str] = None,
+    system_prompt_type: Optional[str] = None,
     history_window: Optional[int] = None,
     **kwargs: Any,
 ) -> List[Dict[str, str]]:
@@ -907,7 +934,16 @@ def build_finetuned_tutor_messages(
     Preserves full raw XML string (<reasoning>...</reasoning>\n<state>...</state>\n<response>...</response>)
     in the tutor's assistant history.
     """
-    sys_content = (system_prompt or FINETUNED_SOCRATIC_SYSTEM_PROMPT).strip()
+    prompt_choice = (system_prompt or system_prompt_type or "").strip()
+    if prompt_choice in ("pedagogical", "small", "socratic", "socratic_small", "socratic_ft"):
+        sys_content = FINETUNED_SOCRATIC_PEDAGOGICAL_SYSTEM_PROMPT.strip()
+    elif prompt_choice in ("default", "base", "ft", "finetuned_socratic"):
+        sys_content = FINETUNED_SOCRATIC_SYSTEM_PROMPT.strip()
+    elif system_prompt and len(system_prompt.strip()) > 30:
+        sys_content = system_prompt.strip()
+    else:
+        sys_content = FINETUNED_SOCRATIC_SYSTEM_PROMPT.strip()
+
     messages: List[Dict[str, str]] = [{"role": "system", "content": sys_content}]
 
     if not conversation_history:
@@ -1072,6 +1108,7 @@ class TutorPromptGenerator:
         conversation_history: Optional[Union[List[Dict[str, Any]], str]] = None,
         problem: Optional[str] = None,
         system_prompt: Optional[str] = None,
+        system_prompt_type: Optional[str] = None,
         history_window: Optional[int] = None,
         **kwargs: Any,
     ) -> List[Dict[str, str]]:
@@ -1080,6 +1117,7 @@ class TutorPromptGenerator:
             conversation_history=conversation_history,
             problem=problem,
             system_prompt=system_prompt,
+            system_prompt_type=system_prompt_type,
             history_window=history_window,
             **kwargs,
         )

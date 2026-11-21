@@ -452,3 +452,52 @@ def test_student_prompt_always_full_history_and_zero_tutor_reasoning():
     assert "<reasoning>" not in student_prompt
     assert "<state>" not in student_prompt
     assert "<response>" not in student_prompt
+
+
+def test_finetuned_socratic_pedagogical_system_prompt_content():
+    from src.prompt_generator import (
+        FINETUNED_SOCRATIC_PEDAGOGICAL_SYSTEM_PROMPT,
+        FINETUNED_SOCRATIC_SMALL_SYSTEM_PROMPT,
+        FINETUNED_SOCRATIC_SYSTEM_PROMPT,
+    )
+
+    # 1. Alias equivalence
+    assert FINETUNED_SOCRATIC_PEDAGOGICAL_SYSTEM_PROMPT == FINETUNED_SOCRATIC_SMALL_SYSTEM_PROMPT
+
+    # 2. Contains XML tags instructions
+    assert "<reasoning>" in FINETUNED_SOCRATIC_PEDAGOGICAL_SYSTEM_PROMPT
+    assert "<state>" in FINETUNED_SOCRATIC_PEDAGOGICAL_SYSTEM_PROMPT
+    assert "<response>" in FINETUNED_SOCRATIC_PEDAGOGICAL_SYSTEM_PROMPT
+
+    # 3. Contains the four pedagogical guideline sections from socratic_tutor_prompt_small.md
+    assert "Diagnosis" in FINETUNED_SOCRATIC_PEDAGOGICAL_SYSTEM_PROMPT
+    assert "Support" in FINETUNED_SOCRATIC_PEDAGOGICAL_SYSTEM_PROMPT
+    assert "Synthesis" in FINETUNED_SOCRATIC_PEDAGOGICAL_SYSTEM_PROMPT
+    assert "Closing" in FINETUNED_SOCRATIC_PEDAGOGICAL_SYSTEM_PROMPT
+
+    # 4. It is more detailed than the minimal one
+    assert len(FINETUNED_SOCRATIC_PEDAGOGICAL_SYSTEM_PROMPT) > len(FINETUNED_SOCRATIC_SYSTEM_PROMPT)
+
+
+def test_build_finetuned_tutor_messages_pedagogical_selection():
+    from src.prompt_generator import (
+        FINETUNED_SOCRATIC_PEDAGOGICAL_SYSTEM_PROMPT,
+        FINETUNED_SOCRATIC_SYSTEM_PROMPT,
+        build_finetuned_tutor_messages,
+    )
+
+    # Default -> minimal system prompt
+    msg_default = build_finetuned_tutor_messages(problem="Test problem")
+    assert msg_default[0]["content"] == FINETUNED_SOCRATIC_SYSTEM_PROMPT
+
+    # Explicit pedagogical system_prompt
+    msg_ped = build_finetuned_tutor_messages(problem="Test problem", system_prompt="pedagogical")
+    assert msg_ped[0]["content"] == FINETUNED_SOCRATIC_PEDAGOGICAL_SYSTEM_PROMPT
+
+    # system_prompt_type="pedagogical"
+    msg_type_ped = build_finetuned_tutor_messages(problem="Test problem", system_prompt_type="pedagogical")
+    assert msg_type_ped[0]["content"] == FINETUNED_SOCRATIC_PEDAGOGICAL_SYSTEM_PROMPT
+
+    # system_prompt_type="socratic_ft"
+    msg_type_sft = build_finetuned_tutor_messages(problem="Test problem", system_prompt_type="socratic_ft")
+    assert msg_type_sft[0]["content"] == FINETUNED_SOCRATIC_PEDAGOGICAL_SYSTEM_PROMPT

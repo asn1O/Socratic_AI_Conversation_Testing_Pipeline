@@ -10,6 +10,8 @@ from dotenv import load_dotenv
 
 from .model import Model
 from .prompt_generator import (
+    FINETUNED_SOCRATIC_PEDAGOGICAL_SYSTEM_PROMPT,
+    FINETUNED_SOCRATIC_SYSTEM_PROMPT,
     build_finetuned_tutor_messages,
     generate_student_prompt,
     generate_tutor_prompt,
@@ -100,6 +102,7 @@ def run_single_conversation(
     eval_combos_path: Optional[Union[str, Path]] = None,
     tutor_type: Optional[str] = None,
     history_window: Optional[int] = None,
+    system_prompt: Optional[str] = None,
 ) -> Tuple[bool, Optional[Path], Dict[str, Any]]:
     """
     Run a multi-turn conversation between a student model and a tutor model.
@@ -242,11 +245,27 @@ def run_single_conversation(
         or getattr(tutor_model, "is_finetuned_socratic", False)
     )
 
-    tutor_prompt_label = (
-        "finetuned_socratic_xml"
-        if is_finetuned
-        else resolved_tutor_prompt_path.name
-    )
+    resolved_system_prompt = None
+    if is_finetuned:
+        sys_choice = (
+            system_prompt
+            or getattr(tutor_model, "system_prompt", None)
+            or ("pedagogical" if tutor_model.provider == "socratic_ft" else None)
+        )
+        if sys_choice in ("pedagogical", "small", "socratic", "socratic_small", "socratic_ft"):
+            resolved_system_prompt = FINETUNED_SOCRATIC_PEDAGOGICAL_SYSTEM_PROMPT
+            tutor_prompt_label = "finetuned_socratic_pedagogical_xml"
+        elif sys_choice in ("default", "base", "ft", "finetuned_socratic"):
+            resolved_system_prompt = FINETUNED_SOCRATIC_SYSTEM_PROMPT
+            tutor_prompt_label = "finetuned_socratic_xml"
+        elif sys_choice and len(str(sys_choice).strip()) > 30:
+            resolved_system_prompt = str(sys_choice).strip()
+            tutor_prompt_label = "finetuned_socratic_custom_xml"
+        else:
+            resolved_system_prompt = FINETUNED_SOCRATIC_SYSTEM_PROMPT
+            tutor_prompt_label = "finetuned_socratic_xml"
+    else:
+        tutor_prompt_label = resolved_tutor_prompt_path.name
 
     window_label = f", Window={effective_history_window}" if effective_history_window else ""
     logger.info(
@@ -396,6 +415,7 @@ def run_single_conversation(
                 tutor_prompt = build_finetuned_tutor_messages(
                     conversation_history=conversation,
                     problem=problem_text,
+                    system_prompt=resolved_system_prompt,
                     history_window=effective_history_window,
                 )
             else:
@@ -565,7 +585,7 @@ def run_single_conversation(
         "=" * 70,
         "COMPLETE CONVERSATION TRANSCRIPT",
         f"  Tutor Model   : {tutor_model.provider} - {tutor_model.model_name}",
-        f"  Tutor Prompt  : {resolved_tutor_prompt_path.name}",
+        f"  Tutor Prompt  : {tutor_prompt_label}",
         f"  Student Model : {student_model.provider} - {student_model.model_name} ({resolved_persona_id} - {persona_name})",
         f"  Scenario ID   : {resolved_scenario_id}",
         f"  Problem       : {problem_text}",
@@ -605,7 +625,7 @@ def run_single_conversation(
         "tutor_model": tutor_model.model_name,
         "tutor_provider": tutor_model.provider,
         "tutor_type": "finetuned_socratic" if is_finetuned else getattr(tutor_model, "tutor_type", None) or "base",
-        "tutor_prompt": "finetuned_socratic_xml" if is_finetuned else resolved_tutor_prompt_path.name,
+        "tutor_prompt": tutor_prompt_label,
         "history_window": effective_history_window,
         "student_model": student_model.model_name,
         "student_provider": student_model.provider,
